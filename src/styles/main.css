@@ -192,3 +192,46 @@
     font-weight: bold;
     color: #007bff;
 }
+
+.crosshair-cursor-enabled { cursor: crosshair !important; }
+
+
+/* Styling for NIP-07 Primary Button - Step 1 (Phase 8) */
+#identity-section .primary-action-button {
+    background-color: #28a745; /* Green - more prominent */
+    border-color: #1e7e34;
+    color: white;
+    padding: 12px 20px; /* Slightly larger */
+    font-size: 1.1em;
+}
+#identity-section .primary-action-button:hover {
+    background-color: #218838;
+}
+#nip07-status-message { /* For messages like "NIP-07 extension detected!" */
+    margin-top: 5px;
+}
+
+
+/* Styling for Detailed Report View - Step 8 (Phase 10) */
+#report-detail-view-section h4 { /* More specific than settings h3 */
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    font-size: 1.1em;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.25em;
+}
+#detail-report-images img {
+    max-width: 150px; /* Control image preview size */
+    max-height: 150px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    object-fit: cover; /* Ensure images cover the area nicely */
+}
+#detail-report-tags-list li {
+    background-color: #007bff;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 10px;
+    font-size: 0.85em;
+}

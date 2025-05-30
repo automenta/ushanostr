@@ -116,44 +116,79 @@ export async function publishEventToConnectedRelays(signedEvent) {
     return { successCount, failureCount, results };
 }
 
+// Placeholder for geohash decoding. Replace with a real library (e.g., ngeohash).
 function calculateGeohash(latitude, longitude, precision = 6) {
     if (latitude === null || longitude === null || isNaN(parseFloat(latitude)) || isNaN(parseFloat(longitude))) return null;
     console.warn("nostrService: Using placeholder geohash function.");
     return `placeholder_gh_${parseFloat(latitude).toFixed(2)}_${parseFloat(longitude).toFixed(2)}`;
 }
 
+// constructReportEvent function (Updated for Step 7 - Phase 9: Proper Image Tags)
 export async function constructReportEvent(reportData, authorPublicKeyHex, focusTagString) {
-    console.log("nostrService: Constructing Nostr event for report:", reportData);
+    console.log("nostrService: Constructing Nostr event with detailed image tags for report:", reportData);
     if (!authorPublicKeyHex) throw new Error("Author public key is required.");
-    if (focusTagString === undefined || focusTagString === null) throw new Error("Focus tag string is required (can be empty string).");
+    if (focusTagString === undefined || focusTagString === null) {
+        console.warn("nostrService: Constructing event with an empty or undefined focusTagString.");
+        focusTagString = "";
+    }
 
     const tags = [];
     const currentTime = Math.floor(Date.now() / 1000);
+
     if (reportData.latitude && reportData.longitude) {
         const geohash = calculateGeohash(parseFloat(reportData.latitude), parseFloat(reportData.longitude));
         if (geohash) tags.push(["g", geohash]);
     }
+
     if (reportData.category) {
         tags.push(["L", "report-category"]);
         tags.push(["l", reportData.category, "report-category"]);
     }
 
     const fTag = focusTagString.startsWith('#') ? focusTagString.substring(1) : focusTagString;
-    if (fTag) { // Only add non-empty focus tags
+    if (fTag) {
         tags.push(["t", fTag]);
     }
 
     if (reportData.tags && Array.isArray(reportData.tags)) {
         reportData.tags.forEach(tag => {
             const tagName = tag.startsWith('#') ? tag.substring(1) : tag;
-            if (tagName && tagName.toLowerCase() !== fTag.toLowerCase()) tags.push(["t", tagName]);
+            if (tagName && (!fTag || tagName.toLowerCase() !== fTag.toLowerCase())) {
+                 tags.push(["t", tagName]);
+            }
         });
     }
+
     if (reportData.title) tags.push(["title", reportData.title]);
     if (reportData.summary) tags.push(["summary", reportData.summary]);
+
     if (reportData.photoInfo && Array.isArray(reportData.photoInfo)) {
-        reportData.photoInfo.forEach(photo => tags.push(["image", photo.name || "uploaded_image_placeholder"]));
+        reportData.photoInfo.forEach(photo => {
+            if (photo && photo.url) {
+                const imageTag = ["image", photo.url];
+                if (photo.mimeType) imageTag.push(photo.mimeType);
+
+                if (photo.width && photo.height) {
+                    imageTag.push(`${photo.width}x${photo.height}`);
+                }
+
+                if (photo.sha256) {
+                    while(imageTag.length < 3) imageTag.push("");
+                    while(imageTag.length < 4) imageTag.push("");
+                    imageTag.push(`ox${photo.sha256}`);
+                }
+
+                if (photo.blurhash) {
+                    while(imageTag.length < 3) imageTag.push("");
+                    while(imageTag.length < 4) imageTag.push("");
+                    while(imageTag.length < 5) imageTag.push("");
+                    imageTag.push(`blurhash:${photo.blurhash}`);
+                }
+                tags.push(imageTag);
+            }
+        });
     }
+
     if (reportData.eventType) tags.push(["event_type", reportData.eventType]);
     if (reportData.initialStatus) tags.push(["status", reportData.initialStatus]);
 
@@ -161,10 +196,11 @@ export async function constructReportEvent(reportData, authorPublicKeyHex, focus
         kind: 30315, pubkey: authorPublicKeyHex, created_at: currentTime,
         tags: tags, content: reportData.description || reportData.summary || ""
     };
-    console.log("nostrService: Constructed event object (unsigned):", event);
+    console.log("nostrService: Constructed event object with detailed image tags (unsigned):", event);
     return event;
 }
 
+// --- Event Signing ---
 export async function signNostrEvent(eventTemplate, decryptedPrivateKeyHex) {
     console.log("nostrService: Attempting to sign event template:", eventTemplate);
     if (!decryptedPrivateKeyHex) throw new Error("Decrypted private key is required.");
@@ -179,6 +215,38 @@ export async function signNostrEvent(eventTemplate, decryptedPrivateKeyHex) {
         console.error("nostrService: Error signing Nostr event:", error);
         throw new Error("Failed to sign event: " + error.message);
     }
+}
+
+// --- Nostr Subscription Logic ---
+export function subscribeToEvents(relaysToSubscribe, filters, onEventCallback, onEOSECallback) {
+    console.log("nostrService: Subscribing to events with filters:", filters, "on relays:", relaysToSubscribe.map(r => r.url));
+    if (!relaysToSubscribe || relaysToSubscribe.length === 0) {
+        return { unsub: () => console.log("nostrService: No subscriptions (no relays).") };
+    }
+    if (!filters || filters.length === 0) {
+        return { unsub: () => console.log("nostrService: No subscriptions (no filters).") };
+    }
+    if (typeof onEventCallback !== 'function') {
+        return { unsub: () => console.log("nostrService: No subscriptions (invalid callback).") };
+    }
+    const activeSubscriptions = [];
+    relaysToSubscribe.forEach(relay => {
+        if (relay.status !== 1) { return; }
+        try {
+            const sub = relay.sub(filters);
+            activeSubscriptions.push(sub);
+            sub.on('event', event => { onEventCallback(event, relay.url); });
+            sub.on('eose', () => { if (typeof onEOSECallback === 'function') onEOSECallback(relay.url); });
+            sub.on('closed', (reason) => { console.log(`Subscription closed on ${relay.url}:`, reason); });
+            sub.on('error', (errMsg) => { console.error(`Error on sub for ${relay.url}:`, errMsg); });
+        } catch (error) { console.error(`Error subscribing to ${relay.url}:`, error); }
+    });
+    return {
+        unsub: () => {
+            activeSubscriptions.forEach(sub => { try { sub.unsub(); } catch (e) { console.error("Error unsubscribing:", e); }});
+            activeSubscriptions.length = 0;
+        }
+    };
 }
 
 console.log("nostrService.js loaded.");

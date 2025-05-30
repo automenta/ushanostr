@@ -219,3 +219,23 @@ initDB().then(() => {
 }).catch(error => {
     console.error('dbService.js: DB initialization on load failed:', error);
 });
+
+
+export async function getAllViewedReports() {
+    console.log("Getting all reports from viewedReports store...");
+    const currentDB = await initDB(); // initDB is already defined
+    return new Promise((resolve, reject) => {
+        const transaction = currentDB.transaction([STORE_VIEWED_REPORTS], 'readonly'); // STORE_VIEWED_REPORTS is defined
+        const store = transaction.objectStore(STORE_VIEWED_REPORTS);
+        const request = store.getAll(); // Gets all records from the object store
+
+        request.onsuccess = () => {
+            console.log(`Found ${request.result.length} viewed reports.`);
+            resolve(request.result); // Returns an array of event objects
+        };
+        request.onerror = (event) => {
+            console.error('Error fetching all viewed reports:', event.target.errorCode);
+            reject('Error fetching all viewed reports: ' + event.target.errorCode);
+        };
+    });
+}
