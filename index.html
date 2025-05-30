@@ -6,7 +6,6 @@
     <meta name="theme-color" content="#333333">
     <title>NostrMapper (New Structure)</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="../src/styles/main.css">
 </head>
 <body>
         <header>
@@ -196,7 +195,12 @@
 
         <section id="settings-section" class="hidden">
             <h2>Settings</h2>
-            <!-- Settings UI will go here -->
+
+        <div style="margin-top: 20px;">
+            <h3>Offline Queue Management</h3>
+            <button id="sync-queue-button">Sync Queued Reports</button>
+            <p id="sync-status-message" style="font-size: 0.9em; color: #555;"></p>
+        </div>
         </section>
     </main>
 
@@ -205,8 +209,6 @@
     </footer>
 
     <!-- Main application script -->
-    <script src="../src/services/dbService.js" defer></script>\
-    <script src="../src/utils/cryptoUtils.js" defer></script>
-    <script src="../src/main.js" defer></script>
+    <script type="module" src="/src/main.js"></script>
 </body>
 </html>

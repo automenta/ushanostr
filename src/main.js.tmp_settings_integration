@@ -1,0 +1,933 @@
+// ES6 Imports for services and utils
+import { initDB, saveProfileToDB, getProfileFromDB, deleteProfileFromDB, saveReportToQueueDB, getQueuedReports, updateReportStatusInDB } from './services/dbService.js';
+import { encryptData, decryptData } from './utils/cryptoUtils.js';
+// nostrTools and L (Leaflet) are still global from CDN includes in index.html
+
+// === src/main.js ===
+// Main application logic, UI interactions, and service consumption.
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM fully loaded and parsed. Initializing UI logic in main.js.");
+
+    const sections = {
+        identity: document.getElementById('identity-section'),
+        map: document.getElementById('map-section'),
+        createReport: document.getElementById('create-report-section'),
+        settings: document.getElementById('settings-section'),
+        createProfileForm: document.getElementById('create-profile-form-section'),
+        importKeyForm: document.getElementById('import-key-form-section')
+    };
+
+    const navButtons = {
+        identity: document.getElementById('nav-identity'),
+        map: document.getElementById('nav-map'),
+        createReport: document.getElementById('nav-create-report'),
+        settings: document.getElementById('nav-settings')
+    };
+
+    function showSection(sectionId) {
+        console.log(`Attempting to show section: ${sectionId}`);
+        Object.values(sections).forEach(section => {
+            if (section) section.classList.add('hidden');
+        });
+        if (sections.createProfileForm) sections.createProfileForm.classList.add('hidden');
+        if (sections.importKeyForm) sections.importKeyForm.classList.add('hidden');
+
+        if (sections[sectionId]) {
+            sections[sectionId].classList.remove('hidden');
+            console.log(`Section ${sectionId} shown.`);
+        } else {
+            console.warn(`Section ${sectionId} not found.`);
+        }
+    }
+
+    if (navButtons.identity) navButtons.identity.addEventListener('click', () => showSection('identity'));
+    // navButtons.map listener is defined with map init logic later
+    if (navButtons.createReport) navButtons.createReport.addEventListener('click', () => showSection('createReport'));
+    if (navButtons.settings) navButtons.settings.addEventListener('click', () => showSection('settings'));
+
+    const createProfileButton = document.getElementById('create-profile-button');
+    const cancelCreateProfileButton = document.getElementById('cancel-create-profile-button');
+    const importKeyButton = document.getElementById('import-key-button');
+    const cancelImportKeyButton = document.getElementById('cancel-import-key-button');
+
+    const generateKeysButton = document.getElementById('generate-keys-button');
+    const createAckRisksCheckbox = document.getElementById('create-ack-risks');
+    const createPassphraseInput = document.getElementById('create-passphrase');
+    const generatedPublicKeyText = document.getElementById('generated-public-key');
+    const generatedPrivateKeyTextarea = document.getElementById('generated-private-key');
+    const generatedKeyInfoDiv = document.getElementById('generated-key-info');
+    const copyPrivateKeyButton = document.getElementById('copy-private-key-button');
+
+    const importKeySubmitButton = document.getElementById('import-key-submit-button');
+    const importAckRisksCheckbox = document.getElementById('import-ack-risks');
+    const importPrivateKeyTextarea = document.getElementById('import-private-key');
+    const importPassphraseInput = document.getElementById('import-passphrase');
+
+    const profileInfoArea = document.getElementById('profile-info-area');
+    const signingTestArea = document.getElementById('signing-test-area');
+    const testDecryptButton = document.getElementById('test-decrypt-button');
+
+    if (createProfileButton) createProfileButton.addEventListener('click', () => {
+        sections.identity.classList.add('hidden');
+        sections.createProfileForm.classList.remove('hidden');
+    });
+    if (cancelCreateProfileButton) cancelCreateProfileButton.addEventListener('click', () => {
+        sections.createProfileForm.classList.add('hidden');
+        sections.identity.classList.remove('hidden');
+        if (generatedKeyInfoDiv) generatedKeyInfoDiv.classList.add('hidden');
+    });
+    if (importKeyButton) importKeyButton.addEventListener('click', () => {
+        sections.identity.classList.add('hidden');
+        sections.importKeyForm.classList.remove('hidden');
+    });
+    if (cancelImportKeyButton) cancelImportKeyButton.addEventListener('click', () => {
+        sections.importKeyForm.classList.add('hidden');
+        sections.identity.classList.remove('hidden');
+    });
+
+    async function loadAndDisplayProfile() {
+        console.log("loadAndDisplayProfile called");
+        try {
+            const profile = await getProfileFromDB('localUser');
+            if (profile && profile.pubkey) {
+                const npub = nostrTools.nip19.npubEncode(profile.pubkey);
+                let profileTypeDisplay = (profile.profileType === 'localImport') ? "(Local - Imported)" : "(Local)";
+                profileInfoArea.innerHTML = `Current Profile ${profileTypeDisplay}: ${npub} <button id="logout-button" style="margin-left: 10px; padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Logout</button>`;
+
+                const logoutButton = document.getElementById('logout-button');
+                if (logoutButton) logoutButton.addEventListener('click', handleLogout);
+                if (signingTestArea) signingTestArea.classList.remove('hidden');
+            } else {
+                profileInfoArea.textContent = 'Current Profile: Not logged in.';
+                if (signingTestArea) signingTestArea.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error("Error loading profile:", error);
+            profileInfoArea.textContent = 'Current Profile: Error loading.';
+            if (signingTestArea) signingTestArea.classList.add('hidden');
+        }
+    }
+
+    async function handleLogout() {
+        const confirmLogout = confirm("Are you sure you want to log out? This will remove your encrypted private key from this browser. Make sure you have backed up your private key (nsec)!");
+        if (confirmLogout) {
+            try {
+                await deleteProfileFromDB('localUser');
+                alert('You have been logged out. Your local key data has been cleared.');
+                loadAndDisplayProfile();
+                showSection('identity');
+            } catch (error) {
+                console.error('Error during logout:', error);
+                alert('Failed to logout completely: ' + error.message);
+            }
+        }
+    }
+
+    if (generateKeysButton) {
+        generateKeysButton.addEventListener('click', async () => {
+            if (!createAckRisksCheckbox.checked) {
+                alert('You must acknowledge the risks before generating keys.'); return;
+            }
+            const passphrase = createPassphraseInput.value;
+            if (passphrase.length < 8) {
+                alert('Passphrase must be at least 8 characters long.'); return;
+            }
+            try {
+                const privateKeyHex = nostrTools.generatePrivateKey();
+                const publicKeyHex = nostrTools.getPublicKey(privateKeyHex);
+                const nsec = nostrTools.nip19.nsecEncode(privateKeyHex);
+                const npub = nostrTools.nip19.npubEncode(publicKeyHex);
+                generatedPublicKeyText.textContent = npub;
+                generatedPrivateKeyTextarea.value = nsec;
+                generatedKeyInfoDiv.classList.remove('hidden');
+                const encryptedKeyData = await encryptData(privateKeyHex, passphrase);
+                const profile = {
+                    id: 'localUser', pubkey: publicKeyHex,
+                    encryptedSalt: encryptedKeyData.salt, encryptedIv: encryptedKeyData.iv,
+                    encryptedPrivateKey: encryptedKeyData.encryptedData, profileType: 'local'
+                };
+                await saveProfileToDB(profile);
+                alert('Profile created and saved locally (encrypted)! IMPORTANT: Copy your private key (nsec) shown and back it up securely. It will not be shown again.');
+                createPassphraseInput.value = '';
+                loadAndDisplayProfile();
+            } catch (error) {
+                console.error('Error generating/saving keys:', error);
+                alert('Failed to generate or save keys: ' + error.message);
+            }
+        });
+    }
+    if (copyPrivateKeyButton) {
+        copyPrivateKeyButton.addEventListener('click', () => {
+            generatedPrivateKeyTextarea.select();
+            try {
+                document.execCommand('copy');
+                alert('Private key copied to clipboard! Store it safely.');
+            } catch (err) {
+                alert('Failed to copy private key. Please copy it manually.');
+            }
+            if (window.getSelection) window.getSelection().removeAllRanges();
+            else if (document.selection) document.selection.empty();
+        });
+    }
+
+    if (importKeySubmitButton) {
+        importKeySubmitButton.addEventListener('click', async () => {
+            if (!importAckRisksCheckbox.checked) {
+                alert('You must acknowledge the EXTREME risks before importing a private key.'); return;
+            }
+            const privateKeyInput = importPrivateKeyTextarea.value.trim();
+            const passphrase = importPassphraseInput.value;
+            if (!privateKeyInput || passphrase.length < 8) {
+                alert('Private key and a passphrase of at least 8 characters are required.'); return;
+            }
+            try {
+                let privateKeyHex;
+                if (privateKeyInput.startsWith('nsec')) {
+                    const decoded = nostrTools.nip19.decode(privateKeyInput);
+                    if (decoded.type !== 'nsec') throw new Error('Invalid nsec private key format.');
+                    privateKeyHex = decoded.data;
+                } else if (privateKeyInput.length === 64 && /^[a-f0-9]+$/.test(privateKeyInput)) {
+                    privateKeyHex = privateKeyInput;
+                } else {
+                    throw new Error('Invalid private key format. Please use nsec or hex format.');
+                }
+                const publicKeyHex = nostrTools.getPublicKey(privateKeyHex);
+                const npub = nostrTools.nip19.npubEncode(publicKeyHex);
+                const encryptedKeyData = await encryptData(privateKeyHex, passphrase);
+                const profile = {
+                    id: 'localUser', pubkey: publicKeyHex,
+                    encryptedSalt: encryptedKeyData.salt, encryptedIv: encryptedKeyData.iv,
+                    encryptedPrivateKey: encryptedKeyData.encryptedData, profileType: 'localImport'
+                };
+                await saveProfileToDB(profile);
+                alert('Private key imported, encrypted, and saved locally! Your public key (npub) is: ' + npub);
+                importPrivateKeyTextarea.value = '';
+                importPassphraseInput.value = '';
+                importAckRisksCheckbox.checked = false;
+                loadAndDisplayProfile();
+                showSection('identity');
+            } catch (error) {
+                console.error('Error importing/saving key:', error);
+                alert('Failed to import or save key: ' + error.message);
+            }
+        });
+    }
+
+    async function getDecryptedPrivateKeyForSigning() {
+        const profile = await getProfileFromDB('localUser');
+        if (!profile || !profile.encryptedPrivateKey) {
+            alert('No local profile found.'); throw new Error('No local profile.');
+        }
+        const passphrase = prompt('Enter passphrase to decrypt private key for signing:');
+        if (!passphrase) { alert('Passphrase not provided.'); throw new Error('Passphrase not provided.'); }
+        try {
+            const encryptedDetails = {
+                salt: profile.encryptedSalt, iv: profile.encryptedIv,
+                encryptedData: profile.encryptedPrivateKey
+            };
+            const decryptedHexKey = await decryptData(encryptedDetails, passphrase);
+            console.log('Decrypted private key (hex) for signing:', decryptedHexKey);
+            const publicKeyFromDecrypted = nostrTools.getPublicKey(decryptedHexKey);
+            if (publicKeyFromDecrypted === profile.pubkey) {
+                console.log("Verification successful: Derived public key matches stored public key.");
+                alert('Private key decrypted successfully for signing (see console).');
+            } else {
+                console.error("CRITICAL ERROR: Derived public key does NOT match stored public key after decryption.");
+                alert("CRITICAL ERROR: Public key verification failed after decryption. Check console.");
+            }
+            return decryptedHexKey;
+        } catch (error) {
+            console.error('Failed to get decrypted private key:', error);
+            alert('Failed to decrypt private key: ' + error.message);
+            throw error;
+        }
+    }
+    if (testDecryptButton) {
+        testDecryptButton.addEventListener('click', async () => {
+            try { await getDecryptedPrivateKeyForSigning(); }
+            catch (err) { console.log("Test decryption process ended with error or cancellation."); }
+        });
+    }
+
+    // Report Form Elements
+    const createReportForm = document.getElementById('create-report-form');
+    const reportTitleInput = document.getElementById('report-title');
+    const reportSummaryInput = document.getElementById('report-summary');
+    const reportDescriptionInput = document.getElementById('report-description');
+    const reportLatitudeInput = document.getElementById('report-latitude');
+    const reportLongitudeInput = document.getElementById('report-longitude');
+    // New form elements for Step 14b
+    const reportTagsInput = document.getElementById('report-tags');
+    const reportCategoryInput = document.getElementById('report-category');
+    const reportEventTypeSelect = document.getElementById('report-event-type');
+    const reportInitialStatusSelect = document.getElementById('report-initial-status');
+    const reportPhotosInput = document.getElementById('report-photos');
+
+    // Updated Report Queuing Logic (Step 14b)
+    if (createReportForm) {
+        createReportForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const title = reportTitleInput.value;
+            const summary = reportSummaryInput.value;
+            const description = reportDescriptionInput.value;
+            const latitude = reportLatitudeInput.value;
+            const longitude = reportLongitudeInput.value;
+            const tags = reportTagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
+            const category = reportCategoryInput.value.trim();
+            const eventType = reportEventTypeSelect.value;
+            const initialStatus = reportInitialStatusSelect.value;
+            let photoInfo = [];
+            if (reportPhotosInput.files.length > 0) {
+                for (let i = 0; i < reportPhotosInput.files.length; i++) {
+                    photoInfo.push({ name: reportPhotosInput.files[i].name, type: reportPhotosInput.files[i].type, size: reportPhotosInput.files[i].size });
+                }
+            }
+            if (!title || !summary) {
+                alert('Title and Summary are required.'); return;
+            }
+            const reportData = {
+                title, summary, description, latitude, longitude,
+                tags, category, eventType, initialStatus, photoInfo
+            };
+            try {
+                const reportKey = await saveReportToQueueDB(reportData); // From dbService.js
+                alert(`Report "${title}" (ID: ${reportKey}) queued with additional details!`);
+                createReportForm.reset();
+                reportPhotosInput.value = null;
+            } catch (error) {
+                console.error('Failed to queue report with additional details:', error);
+                alert('Error queuing report: ' + error.message);
+            }
+        });
+        console.log("Create report form event listener updated for additional fields.");
+    } else {
+        console.warn("Create report form not found. Cannot attach submit listener.");
+    }
+
+    // === Map Initialization Logic (Step 11) ===
+    let map;
+    function initializeMap() {
+        const mapContainer = document.getElementById('map-container');
+        if (!mapContainer) { console.error('Map container element not found.'); return; }
+        if (typeof L === 'undefined') {
+            console.error('Leaflet library (L) not found.');
+            mapContainer.innerHTML = '<p style="color: red;">Error: Map library failed to load.</p>'; return;
+        }
+        if (map && mapContainer.offsetParent !== null) {
+            map.invalidateSize(); return;
+        }
+        if (map) {
+             setTimeout(() => { if (map) map.invalidateSize(); }, 100); return;
+        }
+        mapContainer.innerHTML = '';
+        map = L.map('map-container').setView([20, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 18,
+        }).addTo(map);
+        console.log('Leaflet Map initialized in map-container.');
+        setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+    }
+    if (navButtons.map) {
+        const newMapButtonListener = () => {
+            showSection('map');
+            initializeMap();
+        };
+        navButtons.map.addEventListener('click', newMapButtonListener);
+        // navButtons.map._clickHandler = newMapButtonListener; // Not strictly needed if DOMContentLoaded handles single init
+        console.log("Map navigation button event listener updated to initialize map.");
+    } else {
+        console.warn("navButtons.map not found, cannot attach map initialization listener.");
+    }
+
+    // === Offline Indicator Logic (Step 13) ===
+    const offlineIndicatorElement = document.getElementById('offline-indicator');
+    function updateOnlineStatus() {
+        if (navigator.onLine) {
+            if (offlineIndicatorElement) {
+                offlineIndicatorElement.textContent = 'Online';
+                offlineIndicatorElement.style.backgroundColor = '#28a745';
+                offlineIndicatorElement.style.color = 'white';
+                offlineIndicatorElement.style.display = 'block';
+                setTimeout(() => {
+                    if (offlineIndicatorElement.textContent === 'Online') {
+                         offlineIndicatorElement.style.display = 'none';
+                    }
+                }, 3000);
+            }
+        } else {
+            if (offlineIndicatorElement) {
+                offlineIndicatorElement.textContent = 'Offline';
+                offlineIndicatorElement.style.backgroundColor = '#dc3545';
+                offlineIndicatorElement.style.color = 'white';
+                offlineIndicatorElement.style.display = 'block';
+            }
+        }
+    }
+    if (offlineIndicatorElement) {
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus();
+    } else {
+        console.warn("Offline indicator element not found.");
+    }
+
+    // --- Initial calls ---
+    loadAndDisplayProfile();
+    showSection('identity');
+
+
+    // === Nostr Event Construction (Step 14c) ===
+    // Placeholder for geohash functionality.
+    // In a real implementation, you'd use a library like 'ngeohash'.
+    function calculateGeohash(latitude, longitude, precision = 6) {
+        if (latitude === null || longitude === null || isNaN(parseFloat(latitude)) || isNaN(parseFloat(longitude))) {
+            return null; // No location, no geohash
+        }
+        // This is NOT a real geohash. Placeholder only.
+        console.warn("Using placeholder geohash function. Replace with a real implementation.");
+        return `placeholder_gh_${parseFloat(latitude).toFixed(2)}_${parseFloat(longitude).toFixed(2)}`;
+    }
+
+    async function constructReportEvent(reportData, authorPublicKeyHex) {
+        console.log("Constructing Nostr event for report:", reportData);
+        console.log("Using author pubkey:", authorPublicKeyHex);
+
+        if (!authorPublicKeyHex) {
+            throw new Error("Author public key is required to construct an event.");
+        }
+
+        const tags = [];
+        const currentTime = Math.floor(Date.now() / 1000);
+
+        // Geohash tag (using placeholder)
+        if (reportData.latitude && reportData.longitude) {
+            const geohash = calculateGeohash(parseFloat(reportData.latitude), parseFloat(reportData.longitude));
+            if (geohash) {
+                tags.push(["g", geohash]);
+            }
+        }
+
+        // Category tags (NIP-32 style)
+        if (reportData.category) {
+            tags.push(["L", "report-category"]); // General label namespace
+            tags.push(["l", reportData.category, "report-category"]);
+        }
+
+        // Deployment/Focus Tag (hardcoded for now) and other freeform tags
+        const focusTag = "#NostrMapper_Default_Focus"; // Placeholder
+        tags.push(["t", focusTag.startsWith('#') ? focusTag.substring(1) : focusTag]);
+
+        if (reportData.tags && Array.isArray(reportData.tags)) {
+            reportData.tags.forEach(tag => {
+                // Ensure tags don't include '#' if they are just keywords,
+                // or remove '#' if `nostr-tools` handles it.
+                // For `t` tags, the value is usually the keyword itself without '#'.
+                const tagName = tag.startsWith('#') ? tag.substring(1) : tag;
+                if (tagName.toLowerCase() !== (focusTag.startsWith('#') ? focusTag.substring(1) : focusTag).toLowerCase()){ // Avoid duplicating focus tag
+                     tags.push(["t", tagName]);
+                }
+            });
+        }
+
+        // Title and Summary
+        if (reportData.title) {
+            tags.push(["title", reportData.title]);
+        }
+        if (reportData.summary) {
+            tags.push(["summary", reportData.summary]);
+        }
+
+        // Image tags (simplified placeholder)
+        if (reportData.photoInfo && Array.isArray(reportData.photoInfo)) {
+            reportData.photoInfo.forEach(photo => {
+                // Using name as a placeholder for URL. Actual URL will come from upload service.
+                tags.push(["image", photo.name || "uploaded_image_placeholder"]);
+            });
+        }
+
+        // Event Type and Status
+        if (reportData.eventType) {
+            tags.push(["event_type", reportData.eventType]);
+        }
+        if (reportData.initialStatus) {
+            tags.push(["status", reportData.initialStatus]);
+        }
+
+        const event = {
+            kind: 30315,
+            pubkey: authorPublicKeyHex,
+            created_at: currentTime,
+            tags: tags,
+            content: reportData.description || reportData.summary || "" // Ensure content is not undefined
+        };
+
+        console.log("Constructed event object (unsigned):", event);
+        return event;
+    }
+
+    // === Nostr Event Signing (Step 14d) ===
+    async function signNostrEvent(eventTemplate, decryptedPrivateKeyHex) {
+        console.log("Attempting to sign event template:", eventTemplate);
+        if (!decryptedPrivateKeyHex) {
+            throw new Error("Decrypted private key is required to sign an event.");
+        }
+        if (!eventTemplate || typeof eventTemplate.kind !== 'number' || !eventTemplate.tags || !eventTemplate.content) {
+            throw new Error("Valid event template required for signing.");
+        }
+
+        try {
+            // nostr-tools v1.x `finalizeEvent` is suitable here.
+            // It takes an event template (kind, tags, content, created_at)
+            // and a private key (hex). It adds pubkey, id, and sig.
+            // It also ensures created_at is set if not present.
+            // It modifies the event object in place and also returns it.
+
+            // Ensure pubkey is on the template if we know it, though finalizeEvent adds it.
+            if (!eventTemplate.pubkey) {
+                 eventTemplate.pubkey = nostrTools.getPublicKey(decryptedPrivateKeyHex);
+            }
+             // Ensure created_at if not already set by constructReportEvent
+            if (!eventTemplate.created_at) {
+                eventTemplate.created_at = Math.floor(Date.now() / 1000);
+            }
+
+            // The nostrTools.finalizeEvent function is what we need from nostr-tools v1.x
+            // It computes the event ID, signs it, and adds the signature and ID to the event object.
+            // It modifies the event object in place.
+            const signedEvent = nostrTools.finalizeEvent(eventTemplate, decryptedPrivateKeyHex);
+
+            // Validate the signature (optional, but good for sanity check)
+            // const isValid = nostrTools.validateEvent(signedEvent);
+            // if (!isValid) {
+            //    console.error("Generated signature is invalid for event:", signedEvent);
+            //    throw new Error("Failed to produce a valid signature for the event.");
+            // }
+
+            console.log("Event signed successfully:", signedEvent);
+            return signedEvent; // Returns the event object with id and sig
+        } catch (error) {
+            console.error("Error signing Nostr event:", error);
+            throw new Error("Failed to sign event: " + error.message);
+        }
+    }
+
+    // === Nostr Relay Connection & Publishing (Step 14e) ===
+    const DEFAULT_RELAYS = [
+        "wss://relay.damus.io",
+        "wss://relay.snort.social",
+        "wss://nostr.wine",
+        // Add more known reliable relays
+    ];
+    let connectedRelays = []; // Array to store active relay connections
+    let relayConnectPromises = {}; // To avoid multiple connection attempts to the same relay concurrently
+
+    async function connectToRelay(relayUrl) {
+        if (typeof nostrTools === 'undefined' || typeof nostrTools.relayInit === 'undefined') {
+            console.error("nostrTools or nostrTools.relayInit is not available.");
+            throw new Error("nostrTools not loaded.");
+        }
+
+        // Check if already connected or connection attempt in progress
+        const existingRelay = connectedRelays.find(r => r.url === relayUrl);
+        if (existingRelay && existingRelay.status === 1) { // WebSocket.OPEN = 1
+            console.log(`Already connected to ${relayUrl}`);
+            return existingRelay;
+        }
+        if (relayConnectPromises[relayUrl]) {
+            console.log(`Connection attempt already in progress for ${relayUrl}`);
+            return relayConnectPromises[relayUrl]; // Return existing promise
+        }
+
+        console.log(`Attempting to connect to relay: ${relayUrl}`);
+        const relay = nostrTools.relayInit(relayUrl);
+
+        const connectPromise = new Promise((resolve, reject) => {
+            relay.on('connect', () => {
+                console.log(`Connected to ${relay.url}`);
+                if (!connectedRelays.find(r => r.url === relay.url)) {
+                    connectedRelays.push(relay);
+                }
+                delete relayConnectPromises[relayUrl]; // Clear promise once resolved
+                resolve(relay);
+            });
+
+            relay.on('error', (err) => {
+                console.error(`Failed to connect to ${relay.url}:`, err);
+                // Remove from connectedRelays if it was added optimistically or from a previous failed attempt
+                connectedRelays = connectedRelays.filter(r => r.url !== relay.url);
+                delete relayConnectPromises[relayUrl]; // Clear promise on error
+                reject(new Error(`Failed to connect to ${relay.url}`));
+            });
+
+            relay.on('disconnect', () => {
+                console.log(`Disconnected from ${relay.url}`);
+                connectedRelays = connectedRelays.filter(r => r.url !== relay.url);
+                // No reject here as it's a state change, not a connection failure initially.
+            });
+        });
+
+        relayConnectPromises[relayUrl] = connectPromise;
+
+        try {
+            await relay.connect();
+        } catch (error) {
+            // Error already handled by 'error' event, but catch direct connect() call errors
+            console.error(`Direct call to relay.connect() failed for ${relayUrl}:`, error);
+            delete relayConnectPromises[relayUrl];
+            throw error; // Re-throw
+        }
+
+        return connectPromise;
+    }
+
+    async function connectToDefaultRelays() {
+        console.log("Connecting to default relays...");
+        const connectionPromises = DEFAULT_RELAYS.map(url => connectToRelay(url).catch(e => null)); // Catch individual errors
+        await Promise.all(connectionPromises); // Wait for all to attempt
+        console.log(`${connectedRelays.length} relays currently connected.`);
+        // Return the successfully connected ones, or just rely on global `connectedRelays`
+        return connectedRelays.filter(r => r.status === 1);
+    }
+
+    async function publishEventToConnectedRelays(signedEvent) {
+        if (!signedEvent || !signedEvent.id || !signedEvent.sig) {
+            console.error("A valid signed event is required for publishing.");
+            return { successCount: 0, failureCount: 0, results: [] };
+        }
+
+        if (connectedRelays.length === 0) {
+            console.warn("No connected relays. Attempting to connect to default relays first.");
+            await connectToDefaultRelays();
+            if (connectedRelays.length === 0) {
+                 console.error("Still no connected relays. Cannot publish event.");
+                 alert("Cannot publish: No relays connected. Please check settings or internet connection.");
+                 return { successCount: 0, failureCount: 0, results: [] };
+            }
+        }
+
+        console.log(`Publishing event ${signedEvent.id} to ${connectedRelays.length} relays:`, connectedRelays.map(r=>r.url));
+        let successCount = 0;
+        let failureCount = 0;
+        const results = [];
+
+        const publishPromises = connectedRelays.map(async relay => {
+            if (relay.status !== 1) { // WebSocket.OPEN
+                console.warn(`Relay ${relay.url} is not open (status: ${relay.status}). Skipping publish.`);
+                results.push({ relay: relay.url, status: 'skipped', reason: 'not open' });
+                return; // Skip if not connected
+            }
+            try {
+                let pub = relay.publish(signedEvent);
+                // nostr-tools v1.x relay.publish returns a promise-like object with on/off methods
+                // For simplicity, we'll wrap it in a true Promise with a timeout
+                await new Promise((resolve, reject) => {
+                    let handled = false;
+                    pub.on('ok', () => {
+                        if (handled) return;
+                        handled = true;
+                        console.log(`Event ${signedEvent.id} accepted by ${relay.url}`);
+                        successCount++;
+                        results.push({ relay: relay.url, status: 'ok' });
+                        resolve();
+                    });
+                    pub.on('failed', (reason) => {
+                        if (handled) return;
+                        handled = true;
+                        console.error(`Failed to publish event ${signedEvent.id} to ${relay.url}:`, reason);
+                        failureCount++;
+                        results.push({ relay: relay.url, status: 'failed', reason: reason });
+                        resolve(); // Resolve even on failure to not block Promise.all
+                    });
+                    // Timeout for publish acknowledgement
+                    setTimeout(() => {
+                        if (handled) return;
+                        handled = true;
+                        console.warn(`Timeout waiting for ack from ${relay.url} for event ${signedEvent.id}`);
+                        failureCount++; // Count timeout as failure for this context
+                        results.push({ relay: relay.url, status: 'timeout' });
+                        resolve();
+                    }, 5000); // 5 second timeout for ack
+                });
+            } catch (error) {
+                console.error(`Error publishing to ${relay.url}:`, error);
+                failureCount++; // Should ideally be caught by 'failed' event from pub.on
+                results.push({ relay: relay.url, status: 'error', reason: error.message });
+            }
+        });
+
+        await Promise.all(publishPromises);
+        console.log(`Publishing complete. Successes: ${successCount}, Failures: ${failureCount}`);
+        return { successCount, failureCount, results };
+    }
+
+    // Attempt to connect to default relays when the app loads / DOM is ready
+    // This can be called after other initializations.
+    // connectToDefaultRelays(); // Moved to be called explicitly or as part of a sync action
+
+    // === Process Report Queue (Step 14f) ===
+    const syncQueueButton = document.getElementById('sync-queue-button');
+    const syncStatusMessage = document.getElementById('sync-status-message');
+    let isSyncing = false; // Prevent multiple concurrent syncs
+
+    async function processReportQueue() {
+        if (isSyncing) {
+            alert("Sync is already in progress.");
+            return;
+        }
+        isSyncing = true;
+        if (syncStatusMessage) syncStatusMessage.textContent = "Starting sync...";
+        console.log("Processing report queue...");
+
+        try {
+            // Ensure relays are connected (or attempt to connect)
+            if (connectedRelays.length === 0) { // connectedRelays is from Step 14e
+                console.log("No active relay connections, attempting to connect to defaults.");
+                if (syncStatusMessage) syncStatusMessage.textContent = "Connecting to relays...";
+                await connectToDefaultRelays(); // from Step 14e
+                if (connectedRelays.length === 0) {
+                    alert("Failed to connect to any relays. Cannot sync queue.");
+                    if (syncStatusMessage) syncStatusMessage.textContent = "Failed to connect to relays.";
+                    isSyncing = false;
+                    return;
+                }
+            }
+
+            // Get user profile for pubkey and encrypted key details
+            // getProfileFromDB is from dbService.js (global)
+            const userProfile = await getProfileFromDB('localUser');
+            if (!userProfile || !userProfile.pubkey || !userProfile.encryptedPrivateKey) {
+                alert("No local user profile found or profile is incomplete. Cannot sign and publish reports.");
+                if (syncStatusMessage) syncStatusMessage.textContent = "Local profile missing or incomplete.";
+                isSyncing = false;
+                return;
+            }
+            const authorPublicKeyHex = userProfile.pubkey;
+
+            // Get queued reports
+            // getQueuedReports is from dbService.js (global)
+            if (syncStatusMessage) syncStatusMessage.textContent = "Fetching queued reports...";
+            const queuedReports = await getQueuedReports('queued'); // Get reports with 'queued' status
+
+            if (queuedReports.length === 0) {
+                alert("No reports in the queue to sync.");
+                if (syncStatusMessage) syncStatusMessage.textContent = "Report queue is empty.";
+                isSyncing = false;
+                return;
+            }
+
+            if (syncStatusMessage) syncStatusMessage.textContent = `Found ${queuedReports.length} reports. Preparing to publish...`;
+
+            // Decrypt private key once (prompts for passphrase)
+            // getDecryptedPrivateKeyForSigning is from main.js (defined in Step 10)
+            let decryptedPrivateKeyHex;
+            try {
+                decryptedPrivateKeyHex = await getDecryptedPrivateKeyForSigning();
+            } catch (e) {
+                alert("Failed to get private key for signing. Cannot sync queue. " + e.message);
+                if (syncStatusMessage) syncStatusMessage.textContent = "Failed to get private key.";
+                isSyncing = false;
+                return;
+            }
+
+            let overallSuccessCount = 0;
+            let overallFailureCount = 0;
+
+            for (const reportWithKey of queuedReports) {
+                const reportData = reportWithKey; // The object from DB has all fields
+                const reportKey = reportWithKey.key; // The DB key for updating status
+
+                if (syncStatusMessage) syncStatusMessage.textContent = `Processing report: ${reportData.title || `ID ${reportKey}`}...`;
+                console.log(`Processing report ${reportKey}:`, reportData);
+
+                try {
+                    // 1. Construct Event
+                    // constructReportEvent is from main.js (Step 14c)
+                    const eventTemplate = await constructReportEvent(reportData, authorPublicKeyHex);
+
+                    // 2. Sign Event
+                    // signNostrEvent is from main.js (Step 14d)
+                    const signedEvent = await signNostrEvent(eventTemplate, decryptedPrivateKeyHex);
+
+                    // 3. Publish Event
+                    // publishEventToConnectedRelays is from main.js (Step 14e)
+                    if (syncStatusMessage) syncStatusMessage.textContent = `Publishing: ${reportData.title || `ID ${reportKey}`}...`;
+                    const publishOutcome = await publishEventToConnectedRelays(signedEvent);
+
+                    // 4. Update Status in DB
+                    // updateReportStatusInDB is from dbService.js (global)
+                    let newStatus = 'failed'; // Default to failed
+                    if (publishOutcome.successCount > 0 && publishOutcome.failureCount === 0) {
+                        newStatus = 'published';
+                        overallSuccessCount++;
+                    } else if (publishOutcome.successCount > 0) {
+                        newStatus = 'partially_published'; // Some relays got it
+                        overallSuccessCount++; // Count as success if at least one relay got it
+                    } else {
+                        overallFailureCount++;
+                    }
+                    await updateReportStatusInDB(reportKey, newStatus, publishOutcome);
+                    console.log(`Report ${reportKey} status updated to ${newStatus}.`);
+                    if (syncStatusMessage) syncStatusMessage.textContent = `Report: ${reportData.title || `ID ${reportKey}`} - ${newStatus}.`;
+
+                } catch (error) {
+                    console.error(`Failed to process report ${reportKey}:`, error);
+                    await updateReportStatusInDB(reportKey, 'failed', { error: error.message });
+                    overallFailureCount++;
+                    if (syncStatusMessage) syncStatusMessage.textContent = `Error processing report: ${reportData.title || `ID ${reportKey}`}.`;
+                }
+            }
+
+            const finalMessage = `Queue processing finished. ${overallSuccessCount} report(s) published (or partially). ${overallFailureCount} report(s) failed.`;
+            alert(finalMessage);
+            if (syncStatusMessage) syncStatusMessage.textContent = finalMessage;
+
+        } catch (error) {
+            console.error("Error processing report queue:", error);
+            alert("An error occurred during queue processing: " + error.message);
+            if (syncStatusMessage) syncStatusMessage.textContent = "Error during sync: " + error.message;
+        } finally {
+            isSyncing = false;
+            console.log("Sync process finished.");
+        }
+    }
+
+    if (syncQueueButton) {
+        syncQueueButton.addEventListener('click', processReportQueue);
+        console.log("Sync Queue button event listener attached.");
+    } else {
+        console.warn("Sync Queue button not found.");
+    }
+
+    // === Settings Logic (Step 4 of Phase 5) ===
+    const newRelayUrlInput = document.getElementById('new-relay-url');
+    const addRelayButton = document.getElementById('add-relay-button');
+    const relayListUl = document.getElementById('relay-list');
+    const focusTagInput = document.getElementById('focus-tag-input');
+    const setFocusTagButton = document.getElementById('set-focus-tag-button');
+    const currentFocusTagDisplay = document.getElementById('current-focus-tag-display');
+
+    // Default values if not found in DB
+    const DEFAULT_SETTINGS_RELAYS = [
+        "wss://relay.damus.io",
+        "wss://relay.snort.social",
+        "wss://nostr.wine"
+    ];
+    const DEFAULT_FOCUS_TAG = "#NostrMapper_Default";
+
+    let currentRelays = []; // Local cache of relays
+    let currentFocusTag = ""; // Local cache of focus tag
+
+    function renderRelayList() {
+        if (!relayListUl) return;
+        relayListUl.innerHTML = ''; // Clear existing list
+        currentRelays.forEach(relayUrl => {
+            const li = document.createElement('li');
+            li.textContent = relayUrl;
+
+            const removeButton = document.createElement('button');
+            removeButton.textContent = 'Remove';
+            removeButton.classList.add('remove-relay-button'); // For styling
+            removeButton.dataset.url = relayUrl; // Store URL for removal
+
+            li.appendChild(removeButton);
+            relayListUl.appendChild(li);
+        });
+        console.log("Relay list UI updated.");
+    }
+
+    async function loadSettings() {
+        console.log("Loading settings...");
+        // Load relays
+        let relays = await getSetting('relays'); // getSetting from dbService.js
+        if (!relays || !Array.isArray(relays) || relays.length === 0) {
+            console.log("No relays found in settings, using defaults.");
+            relays = [...DEFAULT_SETTINGS_RELAYS];
+            await saveSetting('relays', relays); // Save defaults if not set
+        }
+        currentRelays = relays;
+        renderRelayList();
+
+        // Load focus tag
+        let tag = await getSetting('focusTag');
+        if (tag === undefined || tag === null || tag.trim() === "") { // Check for empty string too
+            console.log("No focus tag found in settings, using default.");
+            tag = DEFAULT_FOCUS_TAG;
+            await saveSetting('focusTag', tag); // Save default if not set
+        }
+        currentFocusTag = tag;
+        if (currentFocusTagDisplay) currentFocusTagDisplay.textContent = currentFocusTag;
+        if (focusTagInput) focusTagInput.value = currentFocusTag; // Set input field value
+        console.log("Settings loaded and UI updated.");
+    }
+
+    if (addRelayButton) {
+        addRelayButton.addEventListener('click', async () => {
+            const newUrl = newRelayUrlInput.value.trim();
+            if (newUrl.startsWith("wss://") && newUrl.length > 6) {
+                if (!currentRelays.includes(newUrl)) {
+                    currentRelays.push(newUrl);
+                    await saveSetting('relays', currentRelays);
+                    renderRelayList();
+                    newRelayUrlInput.value = ''; // Clear input
+                    console.log(`Relay added: ${newUrl}`);
+                } else {
+                    alert("Relay URL already exists.");
+                }
+            } else {
+                alert("Invalid relay URL. Must start with wss://");
+            }
+        });
+    }
+
+    if (relayListUl) {
+        relayListUl.addEventListener('click', async (event) => {
+            if (event.target && event.target.classList.contains('remove-relay-button')) {
+                const urlToRemove = event.target.dataset.url;
+                if (urlToRemove) {
+                    currentRelays = currentRelays.filter(url => url !== urlToRemove);
+                    await saveSetting('relays', currentRelays);
+                    renderRelayList();
+                    console.log(`Relay removed: ${urlToRemove}`);
+                }
+            }
+        });
+    }
+
+    if (setFocusTagButton) {
+        setFocusTagButton.addEventListener('click', async () => {
+            const newTag = focusTagInput.value.trim();
+            if (newTag) {
+                currentFocusTag = newTag;
+                await saveSetting('focusTag', currentFocusTag);
+                if (currentFocusTagDisplay) currentFocusTagDisplay.textContent = currentFocusTag;
+                console.log(`Focus tag set to: ${currentFocusTag}`);
+                alert(`Focus tag updated to: ${currentFocusTag}`);
+            } else {
+                alert("Focus tag cannot be empty.");
+            }
+        });
+    }
+
+    // Initial call to load settings when DOM is ready
+    loadSettings();
+}); // End of DOMContentLoaded
+
+// === Service Worker Registration ===
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        const swPath = 'sw.js';
+        navigator.serviceWorker.register(swPath)
+            .then(registration => {
+                console.log('Service Worker registered successfully (new structure):', registration);
+            })
+            .catch(error => {
+                console.error('Service Worker registration failed (new structure):', error);
+            });
+    });
+} else {
+    console.warn('Service Worker not supported in this browser.');
+}
+
+console.log("NostrMapper main.js loaded and executing (new structure).");

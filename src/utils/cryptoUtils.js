@@ -2,9 +2,8 @@
 // For now, functions are global or within a simple namespace if preferred,
 // assuming this file is loaded before scripts that use these functions.
 
-console.log("cryptoUtils.js loading...");
 
-async function encryptData(data, password) {
+export async function encryptData(data, password) {
     console.log("Encrypting data...");
     try {
         const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -42,7 +41,7 @@ async function encryptData(data, password) {
     }
 }
 
-async function decryptData(encryptedObj, password) {
+export async function decryptData(encryptedObj, password) {
     console.log("Decrypting data...");
     try {
         const salt = Uint8Array.from(atob(encryptedObj.salt), c => c.charCodeAt(0));
@@ -76,5 +75,3 @@ async function decryptData(encryptedObj, password) {
         throw new Error("Decryption failed. Incorrect passphrase or corrupted data.");
     }
 }
-
-console.log("cryptoUtils.js loaded.");

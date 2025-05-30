@@ -133,3 +133,62 @@
     /* Default browser styling for file input is often sufficient */
     margin-bottom: 10px;
 }
+
+
+/* Styling for Settings Section - Step 3 (Phase 5) */
+#settings-section h3 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+}
+#settings-section h3:first-of-type {
+    margin-top: 0;
+}
+#settings-section div {
+    margin-bottom: 10px;
+}
+#settings-section label {
+    display: block;
+    margin-bottom: 3px;
+    font-weight: normal; /* Overriding form-wide bold for these labels */
+}
+#settings-section input[type="url"],
+#settings-section input[type="text"] {
+    /* width will be similar to other inputs due to global styles, but can be specific if needed */
+    margin-right: 5px; /* Space before button */
+}
+#settings-section button[type="button"] { /* More specific than global form button */
+    padding: 8px 12px;
+    background-color: #555; /* Darker grey for settings actions */
+    color: white;
+    border: 1px solid #444;
+}
+#settings-section button[type="button"]:hover {
+    background-color: #333;
+}
+
+#relay-list li {
+    padding: 5px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#relay-list li:last-child {
+    border-bottom: none;
+}
+#relay-list .remove-relay-button { /* Class for remove buttons */
+    padding: 3px 8px;
+    font-size: 0.8em;
+    background-color: #e74c3c; /* Red */
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+#relay-list .remove-relay-button:hover {
+    background-color: #c0392b;
+}
+#current-focus-tag-display {
+    font-weight: bold;
+    color: #007bff;
+}
