@@ -117,3 +117,19 @@
         #create-report-form input[readonly] {
             background-color: #e9ecef;
         }
+
+/* Styling for new form elements in Report Form - Step 14a */
+#create-report-form select {
+    width: calc(100% - 22px);
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    margin-bottom: 10px; /* Consistent with other inputs */
+}
+#create-report-form input[type="file"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    /* Default browser styling for file input is often sufficient */
+    margin-bottom: 10px;
+}

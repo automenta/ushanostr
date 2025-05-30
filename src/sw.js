@@ -1,32 +1,31 @@
-const CACHE_NAME = 'nostrmapper-cache-v1';
-// APP_SHELL_URL is now index.html, relative to the public directory where index.html resides.
-// The SW will be served likely from src/sw.js or /sw.js depending on server/build tool.
-// For cache.add, the request needs to be for the resource as accessible from the browser.
-// If index.html is at the root of 'public', then '/index.html' or just 'index.html' (if SW is also at root)
-// or an absolute path if served from a different origin/path.
-// Assuming sw.js will be served from the root, or its path will be handled by a build tool,
-// and index.html is also at the root of the served site.
-const APP_SHELL_URL = 'index.html';
+// Contents of src/sw.js - Updated for Map Tile Caching
 
+const CACHE_NAME = 'nostrmapper-cache-v1'; // For app shell and core assets
+const MAP_TILES_CACHE_NAME = 'nostrmapper-map-tiles-cache-v1'; // Separate cache for map tiles
+const ALL_CACHES = [CACHE_NAME, MAP_TILES_CACHE_NAME];
+
+const APP_SHELL_URL = 'index.html';
 const CDN_ASSETS = [
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
     'https://unpkg.com/nostr-tools@1/lib/nostr.bundle.js'
 ];
 
+// OpenStreetMap tile URL pattern
+const MAP_TILE_PATTERN = /https?:\/\/([abc])\.tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png/;
+
 self.addEventListener('install', event => {
-    console.log('[SW] Install event for new structure');
+    console.log('[SW] Install event');
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
             console.log('[SW] Caching app shell (index.html) and CDN assets');
-            // For a SW served from /sw.js, and index.html at /, request for 'index.html' or '/'
             const appShellRequest = new Request(APP_SHELL_URL, { mode: 'same-origin' });
             cache.add(appShellRequest);
-
             return cache.addAll(CDN_ASSETS);
         }).catch(error => {
-            console.error('[SW] Caching failed during install:', error);
+            console.error('[SW] Core asset caching failed during install:', error);
         })
+        // Note: We don't pre-cache map tiles during install as they are too numerous.
     );
 });
 
@@ -36,8 +35,8 @@ self.addEventListener('activate', event => {
         caches.keys().then(cacheNames => {
             return Promise.all(
                 cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
-                        console.log('[SW] Deleting old cache:', cacheName);
+                    if (!ALL_CACHES.includes(cacheName)) { // Check against all known caches
+                        console.log('[SW] Deleting old/unused cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
@@ -48,58 +47,66 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-    if (!event.request.url.startsWith('http')) {
+    const requestUrl = event.request.url;
+
+    // Skip non-http/https requests (e.g. chrome-extension://)
+    if (!requestUrl.startsWith('http')) {
         return;
     }
 
-    const requestUrl = new URL(event.request.url);
-    // Serve app shell from cache first
-    // Check if the request is for the app shell (index.html at the root)
-    if (requestUrl.pathname.endsWith('/' + APP_SHELL_URL) || requestUrl.pathname === '/' || requestUrl.pathname === '/index.html') {
-        event.respondWith(
-            caches.match(APP_SHELL_URL) // Match specifically for APP_SHELL_URL
-            .then(cachedResponse => {
-                if (cachedResponse) return cachedResponse;
-                return fetch(event.request).then(networkResponse => {
-                    // No need to cache app shell here again as it's done on install
-                    return networkResponse;
-                });
-            })
-        );
-    }
-    // Serve CDN assets from cache first
-    else if (CDN_ASSETS.includes(event.request.url)) {
+    const url = new URL(requestUrl);
+
+    // App Shell and Core CDN Assets: Cache First
+    if (url.pathname.endsWith('/' + APP_SHELL_URL) || url.pathname === '/' || CDN_ASSETS.includes(requestUrl)) {
         event.respondWith(
             caches.match(event.request).then(cachedResponse => {
-                if (cachedResponse) return cachedResponse;
+                if (cachedResponse) {
+                    // console.log('[SW] Serving from CACHE_NAME:', requestUrl);
+                    return cachedResponse;
+                }
+                // console.log('[SW] Fetching from network (core asset):', requestUrl);
                 return fetch(event.request).then(networkResponse => {
-                    if (networkResponse && networkResponse.status === 200) {
+                    // Optional: Cache CDN assets if missed during install, though addAll should get them.
+                    if (CDN_ASSETS.includes(requestUrl) && networkResponse && networkResponse.status === 200) {
                         const responseToCache = networkResponse.clone();
-                        caches.open(CACHE_NAME).then(cache => {
-                            cache.put(event.request, responseToCache);
-                        });
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
                     }
                     return networkResponse;
                 });
             })
         );
-    } else {
-        // Network first for other requests (e.g., map tiles)
-        // console.log('[SW] Network first for:', event.request.url);
+    }
+    // Map Tiles: Stale-While-Revalidate
+    else if (MAP_TILE_PATTERN.test(requestUrl)) {
         event.respondWith(
-            fetch(event.request)
-            .then(networkResponse => {
-                // Optional: Cache map tiles or other dynamic assets here if desired
-                // For example, if it's a map tile:
-                // if (networkResponse && networkResponse.status === 200 && event.request.url.includes('tile.openstreetmap.org')) {
-                //    const responseToCache = networkResponse.clone();
-                //    caches.open(CACHE_NAME_MAP_TILES).then(cache => cache.put(event.request, responseToCache));
-                // }
-                return networkResponse;
+            caches.open(MAP_TILES_CACHE_NAME).then(cache => {
+                return cache.match(event.request).then(cachedResponse => {
+                    const fetchPromise = fetch(event.request).then(networkResponse => {
+                        if (networkResponse && networkResponse.status === 200) {
+                            // console.log('[SW] Caching map tile:', requestUrl);
+                            cache.put(event.request, networkResponse.clone());
+                        }
+                        return networkResponse;
+                    }).catch(error => {
+                        console.warn('[SW] Map tile fetch failed:', requestUrl, error);
+                        // If fetch fails and there's a cached response, cachedResponse would have been returned already.
+                        // If no cachedResponse and fetch fails, it will naturally result in an error for the client.
+                    });
+
+                    // Return cached response if available, otherwise wait for network
+                    // This implements stale-while-revalidate: serve from cache, update in background.
+                    return cachedResponse || fetchPromise;
+                });
             })
-            .catch(error => {
-                console.warn('[SW] Fetch failed for non-explicitly cached asset:', event.request.url, error);
-                // No specific offline fallback here yet
+        );
+    }
+    // Other requests: Network First (or Network Only)
+    else {
+        // console.log('[SW] Network first for other request:', requestUrl);
+        event.respondWith(
+            fetch(event.request).catch(error => {
+                console.warn('[SW] Fetch failed for non-explicitly cached asset:', requestUrl, error);
+                // Consider returning a generic offline response or error page if appropriate
             })
         );
     }

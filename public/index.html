@@ -11,6 +11,7 @@
 <body>
         <header>
         <h1>NostrMapper</h1>
+<div id="offline-indicator" style="position: fixed; top: 10px; right: 10px; padding: 5px 10px; background-color: #ffc107; color: black; border-radius: 5px; font-size: 0.9em; display: none; z-index: 10000;">Offline</div>
     </header>
 
     <nav>
@@ -155,6 +156,40 @@
                         <input type="text" id="report-longitude" name="report-longitude" readonly placeholder="e.g., -74.0060">
                     </div>
                 </fieldset>
+            <div>
+                <label for="report-tags">Tags (comma-separated, e.g., #festival, #foodtruck):</label>
+                <input type="text" id="report-tags" name="report-tags" placeholder="e.g., #community, #alert">
+            </div>
+
+            <div>
+                <label for="report-category">Category (e.g., roadblock, aid-station):</label>
+                <input type="text" id="report-category" name="report-category" placeholder="e.g., incident, observation">
+            </div>
+
+            <div>
+                <label for="report-event-type">Event Type:</label>
+                <select id="report-event-type" name="report-event-type">
+                    <option value="observation" selected>Observation</option>
+                    <option value="incident">Incident</option>
+                    <option value="request">Request</option>
+                    <option value="offer">Offer</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="report-initial-status">Initial Status:</label>
+                <select id="report-initial-status" name="report-initial-status">
+                    <option value="new" selected>New</option>
+                    <option value="active">Active</option>
+                    <option value="needs_verification">Needs Verification</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="report-photos">Photo(s) (actual upload later):</label>
+                <input type="file" id="report-photos" name="report-photos" multiple accept="image/*">
+            </div>
                 <button type="submit" id="queue-report-button">Queue Report for Sending</button>
             </form>
         </section>
@@ -170,6 +205,8 @@
     </footer>
 
     <!-- Main application script -->
+    <script src="../src/services/dbService.js" defer></script>\
+    <script src="../src/utils/cryptoUtils.js" defer></script>
     <script src="../src/main.js" defer></script>
 </body>
 </html>
