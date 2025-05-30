@@ -1,0 +1,119 @@
+        /* CSS from original Step 1 */
+        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
+        header { background-color: #f0f0f0; padding: 1em; text-align: center; }
+        nav { background-color: #e0e0e0; padding: 0.5em; text-align: center; }
+        nav button { margin: 0 0.5em; }
+        main { flex-grow: 1; padding: 1em; }
+        footer { background-color: #f0f0f0; padding: 1em; text-align: center; font-size: 0.8em; }
+        .hidden { display: none; }
+        section { margin-bottom: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 5px; }
+        h2 { margin-top: 0; }
+
+        /* Basic Styling for UI Sections - Added in original Step 5 */
+        #identity-section button,
+        #create-profile-form-section button,
+        #import-key-form-section button {
+            padding: 10px 15px;
+            margin-top: 5px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #f8f8f8;
+        }
+
+        #identity-section button:hover,
+        #create-profile-form-section button:hover,
+        #import-key-form-section button:hover {
+            background-color: #e9e9e9;
+        }
+
+        #nip07-login-button { background-color: #d4edda; border-color: #c3e6cb; }
+        #create-profile-button { background-color: #cce5ff; border-color: #b8daff; }
+        #import-key-button { background-color: #fff3cd; border-color: #ffeeba; }
+
+        #generate-keys-button, #import-key-submit-button {
+            background-color: #28a745; /* Green */
+            color: white;
+            border-color: #28a745;
+        }
+        #cancel-create-profile-button, #cancel-import-key-button {
+            background-color: #6c757d; /* Gray */
+            color: white;
+            border-color: #6c757d;
+        }
+
+        input[type="password"], input[type="text"], textarea {
+            /* width: calc(100% - 20px); */ /* Commented out from original to avoid issues, let's make it simpler */
+            width: 98%; /* Simpler width for now */
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        #create-profile-form-section label,
+        #import-key-form-section label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        #create-profile-form-section div[style*="border: 1px solid #e74c3c"],
+        #import-key-form-section div[style*="border: 1px solid #c0392b"] {
+             border-radius: 4px;
+             padding: 15px;
+        }
+        #create-profile-form-section h4,
+        #import-key-form-section h4 {
+            margin-top: 0;
+            color: #c0392b;
+        }
+
+        #generated-key-info {
+            background-color: #e7f3fe;
+            border-color: #b3d7ff;
+        }
+        #generated-private-key {
+            background-color: #f8f9fa;
+            border: 1px solid #ced4da;
+            color: #c0392b;
+            font-weight: bold;
+        }
+
+        /* Styling for Create Report Form - Added in original Step 13 */
+        #create-report-form div, #create-report-form fieldset {
+            margin-bottom: 15px;
+        }
+        #create-report-form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        #create-report-form input[type="text"],
+        #create-report-form textarea {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        #create-report-form button[type="button"],
+        #create-report-form button[type="submit"] {
+            padding: 10px 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+        }
+        #create-report-form button[type="button"] {
+            background-color: #6c757d;
+        }
+        #create-report-form button:hover {
+            opacity: 0.9;
+        }
+        #create-report-form input[readonly] {
+            background-color: #e9ecef;
+        }

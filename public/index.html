@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#333333">
+    <title>NostrMapper (New Structure)</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="../src/styles/main.css">
+</head>
+<body>
+        <header>
+        <h1>NostrMapper</h1>
+    </header>
+
+    <nav>
+        <button id="nav-identity">Identity</button>
+        <button id="nav-map">Map & Reports</button>
+        <button id="nav-create-report">Create Report</button>
+        <button id="nav-settings">Settings</button>
+    </nav>
+
+    <main>
+        <section id="identity-section">
+            <h2>Identity Management</h2>
+            <p>Choose how you want to manage your Nostr identity:</p>
+
+            <button id="nip07-login-button">Connect with Browser Extension (NIP-07 - Recommended)</button>
+            <p style="font-size: 0.9em; color: #555;">Uses a browser extension like Alby, nos2x, etc. Your keys stay in the extension.</p>
+
+            <hr style="margin: 1em 0;">
+
+            <button id="create-profile-button">Create New Nostr Profile (In-App)</button>
+            <p style="font-size: 0.9em; color: #555;">Generates new keys and stores them encrypted in your browser. Requires careful backup.</p>
+
+            <hr style="margin: 1em 0;">
+
+            <button id="import-key-button">Use Existing Private Key (Import - High Risk)</button>
+            <p style="font-size: 0.9em; color: #555;">Import an existing private key. Use with extreme caution.</p>
+
+            <div id="profile-info-area" style="margin-top: 1.5em; padding: 1em; background-color: #f9f9f9; border-radius: 4px;">
+                Current Profile: Not logged in.
+            </div>
+            <div id="signing-test-area" class="hidden" style="margin-top: 1em;">
+                <button id="test-decrypt-button">Test Decrypt & Sign Prep</button>
+            </div>
+        </section>
+
+        <section id="create-profile-form-section" class="hidden" style="border-color: #c0392b; background-color: #fef5f3;">
+            <h3>Create New Nostr Profile</h3>
+            <div style="padding: 10px; border: 1px solid #e74c3c; margin-bottom: 10px; background-color: #fff;">
+                <h4><strong>⚠️ CRITICAL SECURITY WARNING ⚠️</strong></h4>
+                <p>You are about to generate a new Nostr private key and store it encrypted in your browser's local storage (IndexedDB).</p>
+                <p><strong>Risks:</strong></p>
+                <ul>
+                    <li>If someone gains access to your browser or computer, they might be able to access your key if they can also guess your passphrase.</li>
+                    <li>If this application has a security vulnerability (XSS), your key could be compromised.</li>
+                    <li>Clearing your browser data for this site, or a browser/computer malfunction, could lead to loss of this key if not backed up.</li>
+                </ul>
+                <p><strong>Responsibilities:</strong></p>
+                <ul>
+                    <li>You MUST choose a strong, unique passphrase. Do NOT reuse passwords.</li>
+                    <li>You MUST securely back up your private key (which will be shown to you ONCE after generation) in a separate, safe location (e.g., password manager, offline storage).</li>
+                    <li>The application developers are NOT responsible for any loss of keys or funds.</li>
+                </ul>
+                <label>
+                    <input type="checkbox" id="create-ack-risks"> <strong>I understand and accept these risks and responsibilities.</strong>
+                </label>
+            </div>
+            <div>
+                <label for="create-passphrase">Enter a strong passphrase (for encrypting your key):</label>
+                <input type="password" id="create-passphrase" style="width: 98%; padding: 8px; margin-bottom: 10px;">
+            </div>
+            <button id="generate-keys-button">Generate & Store Keys</button>
+            <button id="cancel-create-profile-button">Cancel</button>
+            <div id="generated-key-info" class="hidden" style="margin-top: 15px; padding: 10px; border: 1px dashed #3498db;">
+                <h4>Your New Nostr Keys:</h4>
+                <p><strong>Public Key (npub):</strong> <code id="generated-public-key"></code></p>
+                <p style="color: #c0392b;"><strong>Private Key (nsec) - SAVE THIS IN A SAFE PLACE! This will not be shown again:</strong></p>
+                <textarea id="generated-private-key" readonly style="width: 98%; height: 60px; margin-bottom: 10px; background-color: #eee; font-family: monospace;"></textarea>
+                <button id="copy-private-key-button">Copy Private Key to Clipboard</button>
+            </div>
+        </section>
+
+        <section id="import-key-form-section" class="hidden" style="border-color: #e74c3c; background-color: #fdf7f6;">
+            <h3>Import Existing Private Key</h3>
+            <div style="padding: 10px; border: 1px solid #c0392b; margin-bottom: 10px; background-color: #fff;">
+                <h4><strong>⚠️ EXTREME SECURITY WARNING ⚠️</strong></h4>
+                <p>You are about to import an existing Nostr private key. This is a high-risk operation.</p>
+                <p><strong>Risks:</strong></p>
+                <ul>
+                    <li>Pasting your private key into a website carries significant risk. If this site were compromised, or if you have malicious browser extensions, your key could be stolen.</li>
+                    <li>Storing this key in the browser (even encrypted) is less secure than using a dedicated hardware wallet or a secure browser extension (NIP-07).</li>
+                    <li>If the passphrase you use to encrypt this key is weak, or if your device is compromised, the key might be accessed.</li>
+                </ul>
+                <p><strong>Before Proceeding:</strong></p>
+                <ul>
+                    <li>Ensure you are on the correct and legitimate NostrMapper website.</li>
+                    <li>Consider if using a NIP-07 compatible extension is a better option for you.</li>
+                    <li>You are solely responsible for the security of your private key.</li>
+                </ul>
+                <label>
+                    <input type="checkbox" id="import-ack-risks"> <strong>I understand and accept these EXTREME risks.</strong>
+                </label>
+            </div>
+            <div>
+                <label for="import-private-key">Paste your Nostr Private Key (nsec format):</label>
+                <textarea id="import-private-key" rows="3" style="width: 98%; padding: 8px; margin-bottom: 10px; font-family: monospace;"></textarea>
+            </div>
+            <div>
+                <label for="import-passphrase">Enter a strong passphrase (to encrypt this key in the browser):</label>
+                <input type="password" id="import-passphrase" style="width: 98%; padding: 8px; margin-bottom: 10px;">
+            </div>
+            <button id="import-key-submit-button">Import & Store Key</button>
+            <button id="cancel-import-key-button">Cancel</button>
+        </section>
+
+        <section id="map-section" class="hidden">
+            <h2>Map & Reports</h2>
+            <div id="map-container" style="height: 400px; background-color: #eee;">
+                Map will appear here.
+            </div>
+            <div id="reports-list-container">
+                <!-- Reports list will go here -->
+            </div>
+        </section>
+
+        <section id="create-report-section" class="hidden">
+            <h2>Create New Report</h2>
+            <form id="create-report-form">
+                <div>
+                    <label for="report-title">Title:</label>
+                    <input type="text" id="report-title" name="report-title" required>
+                </div>
+                <div>
+                    <label for="report-summary">Summary:</label>
+                    <textarea id="report-summary" name="report-summary" rows="3" required></textarea>
+                </div>
+                <div>
+                    <label for="report-description">Full Description (Markdown supported):</label>
+                    <textarea id="report-description" name="report-description" rows="6"></textarea>
+                </div>
+                <fieldset style="margin-top: 1em; margin-bottom: 1em; padding: 1em; border: 1px solid #ddd;">
+                    <legend>Location</legend>
+                    <div>
+                        <button type="button" id="pick-location-button">Pick Location from Map</button>
+                        <p style="font-size:0.9em; color: #555;">(This will take you to the map. Click on the map to select coordinates.)</p>
+                    </div>
+                    <div>
+                        <label for="report-latitude">Latitude:</label>
+                        <input type="text" id="report-latitude" name="report-latitude" readonly placeholder="e.g., 40.7128">
+                    </div>
+                    <div>
+                        <label for="report-longitude">Longitude:</label>
+                        <input type="text" id="report-longitude" name="report-longitude" readonly placeholder="e.g., -74.0060">
+                    </div>
+                </fieldset>
+                <button type="submit" id="queue-report-button">Queue Report for Sending</button>
+            </form>
+        </section>
+
+        <section id="settings-section" class="hidden">
+            <h2>Settings</h2>
+            <!-- Settings UI will go here -->
+        </section>
+    </main>
+
+    <footer>
+        <p>NostrMapper - Decentralized Social Mapping</p>
+    </footer>
+
+    <!-- Main application script -->
+    <script src="../src/main.js" defer></script>
+</body>
+</html>

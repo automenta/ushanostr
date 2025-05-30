@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#333333">
+    <!-- Placeholder for PWA Manifest Link -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/nostr-tools@1/lib/nostr.bundle.js"></script>
+    <title>NostrMapper</title>
+    <style>
+        /* CSS will go here */
+        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
+        header { background-color: #f0f0f0; padding: 1em; text-align: center; }
+        nav { background-color: #e0e0e0; padding: 0.5em; text-align: center; }
+        nav button { margin: 0 0.5em; }
+        main { flex-grow: 1; padding: 1em; }
+        footer { background-color: #f0f0f0; padding: 1em; text-align: center; font-size: 0.8em; }
+        .hidden { display: none; }
+        section { margin-bottom: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 5px; }
+        h2 { margin-top: 0; }
+
+        /* Basic Styling for UI Sections - Added in Step 5 */
+        #identity-section button,
+        #create-profile-form-section button,
+        #import-key-form-section button {
+            padding: 10px 15px;
+            margin-top: 5px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #f8f8f8;
+        }
+
+        #identity-section button:hover,
+        #create-profile-form-section button:hover,
+        #import-key-form-section button:hover {
+            background-color: #e9e9e9;
+        }
+
+        #nip07-login-button { background-color: #d4edda; border-color: #c3e6cb; }
+        #create-profile-button { background-color: #cce5ff; border-color: #b8daff; }
+        #import-key-button { background-color: #fff3cd; border-color: #ffeeba; }
+
+        #generate-keys-button, #import-key-submit-button {
+            background-color: #28a745; /* Green */
+            color: white;
+            border-color: #28a745;
+        }
+        #cancel-create-profile-button, #cancel-import-key-button {
+            background-color: #6c757d; /* Gray */
+            color: white;
+            border-color: #6c757d;
+        }
+
+        input[type="password"], input[type="text"], textarea {
+            width: calc(100% - 20px); /* Adjust width considering padding */
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box; /* Important for width calculation */
+        }
+
+        #create-profile-form-section label,
+        #import-key-form-section label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        /* Warning Styles */
+        #create-profile-form-section div[style*="border: 1px solid #e74c3c"],
+        #import-key-form-section div[style*="border: 1px solid #c0392b"] {
+             border-radius: 4px;
+             padding: 15px; /* Increased padding */
+        }
+        #create-profile-form-section h4,
+        #import-key-form-section h4 {
+            margin-top: 0;
+            color: #c0392b; /* Darker red for headings */
+        }
+
+        #generated-key-info {
+            background-color: #e7f3fe; /* Light blue background */
+            border-color: #b3d7ff; /* Blue border */
+        }
+        #generated-private-key {
+            background-color: #f8f9fa; /* Lighter background for textarea */
+            border: 1px solid #ced4da; /* Standard border */
+            color: #c0392b; /* Red text for emphasis */
+            font-weight: bold;
+        }
+
+        /* Styling for Create Report Form - Added in Step 13 */
+        #create-report-form div, #create-report-form fieldset {
+            margin-bottom: 15px;
+        }
+        #create-report-form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        #create-report-form input[type="text"],
+        #create-report-form textarea {
+            width: calc(100% - 22px); /* Account for padding and border */
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        #create-report-form button[type="button"],
+        #create-report-form button[type="submit"] {
+            padding: 10px 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+        }
+        #create-report-form button[type="button"] {
+            background-color: #6c757d;
+        }
+        #create-report-form button:hover {
+            opacity: 0.9;
+        }
+        #create-report-form input[readonly] {
+            background-color: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NostrMapper</h1>
+    </header>
+
+    <nav>
+        <button id="nav-identity">Identity</button>
+        <button id="nav-map">Map & Reports</button>
+        <button id="nav-create-report">Create Report</button>
+        <button id="nav-settings">Settings</button>
+    </nav>
+
+    <main>
+        <section id="identity-section">
+            <h2>Identity Management</h2>
+            <p>Choose how you want to manage your Nostr identity:</p>
+
+            <button id="nip07-login-button">Connect with Browser Extension (NIP-07 - Recommended)</button>
+            <p style="font-size: 0.9em; color: #555;">Uses a browser extension like Alby, nos2x, etc. Your keys stay in the extension.</p>
+
+            <hr style="margin: 1em 0;">
+
+            <button id="create-profile-button">Create New Nostr Profile (In-App)</button>
+            <p style="font-size: 0.9em; color: #555;">Generates new keys and stores them encrypted in your browser. Requires careful backup.</p>
+
+            <hr style="margin: 1em 0;">
+
+            <button id="import-key-button">Use Existing Private Key (Import - High Risk)</button>
+            <p style="font-size: 0.9em; color: #555;">Import an existing private key. Use with extreme caution.</p>
+
+            <!-- Placeholder for displaying current profile info -->
+            <div id="profile-info-area" style="margin-top: 1.5em; padding: 1em; background-color: #f9f9f9; border-radius: 4px;">
+                Current Profile: Not logged in.
+            </div>
+    <div id="signing-test-area" class="hidden" style="margin-top: 1em;">
+        <button id="test-decrypt-button">Test Decrypt & Sign Prep</button>
+    </div>
+        </section>
+
+    <section id="create-profile-form-section" class="hidden" style="border-color: #c0392b; background-color: #fef5f3;">
+        <h3>Create New Nostr Profile</h3>
+
+        <div style="padding: 10px; border: 1px solid #e74c3c; margin-bottom: 10px; background-color: #fff;">
+            <h4><strong>⚠️ CRITICAL SECURITY WARNING ⚠️</strong></h4>
+            <p>You are about to generate a new Nostr private key and store it encrypted in your browser's local storage (IndexedDB).</p>
+            <p><strong>Risks:</strong></p>
+            <ul>
+                <li>If someone gains access to your browser or computer, they might be able to access your key if they can also guess your passphrase.</li>
+                <li>If this application has a security vulnerability (XSS), your key could be compromised.</li>
+                <li>Clearing your browser data for this site, or a browser/computer malfunction, could lead to loss of this key if not backed up.</li>
+            </ul>
+            <p><strong>Responsibilities:</strong></p>
+            <ul>
+                <li>You MUST choose a strong, unique passphrase. Do NOT reuse passwords.</li>
+                <li>You MUST securely back up your private key (which will be shown to you ONCE after generation) in a separate, safe location (e.g., password manager, offline storage).</li>
+                <li>The application developers are NOT responsible for any loss of keys or funds.</li>
+            </ul>
+            <label>
+                <input type="checkbox" id="create-ack-risks"> <strong>I understand and accept these risks and responsibilities.</strong>
+            </label>
+        </div>
+
+        <div>
+            <label for="create-passphrase">Enter a strong passphrase (for encrypting your key):</label>
+            <input type="password" id="create-passphrase" style="width: 98%; padding: 8px; margin-bottom: 10px;">
+        </div>
+
+        <button id="generate-keys-button">Generate & Store Keys</button>
+        <button id="cancel-create-profile-button">Cancel</button>
+
+        <div id="generated-key-info" class="hidden" style="margin-top: 15px; padding: 10px; border: 1px dashed #3498db;">
+            <h4>Your New Nostr Keys:</h4>
+            <p><strong>Public Key (npub):</strong> <code id="generated-public-key"></code></p>
+            <p style="color: #c0392b;"><strong>Private Key (nsec) - SAVE THIS IN A SAFE PLACE! This will not be shown again:</strong></p>
+            <textarea id="generated-private-key" readonly style="width: 98%; height: 60px; margin-bottom: 10px; background-color: #eee; font-family: monospace;"></textarea>
+            <button id="copy-private-key-button">Copy Private Key to Clipboard</button>
+        </div>
+    </section>
+
+    <section id="import-key-form-section" class="hidden" style="border-color: #e74c3c; background-color: #fdf7f6;">
+        <h3>Import Existing Private Key</h3>
+
+        <div style="padding: 10px; border: 1px solid #c0392b; margin-bottom: 10px; background-color: #fff;">
+            <h4><strong>⚠️ EXTREME SECURITY WARNING ⚠️</strong></h4>
+            <p>You are about to import an existing Nostr private key. This is a high-risk operation.</p>
+            <p><strong>Risks:</strong></p>
+            <ul>
+                <li>Pasting your private key into a website carries significant risk. If this site were compromised, or if you have malicious browser extensions, your key could be stolen.</li>
+                <li>Storing this key in the browser (even encrypted) is less secure than using a dedicated hardware wallet or a secure browser extension (NIP-07).</li>
+                <li>If the passphrase you use to encrypt this key is weak, or if your device is compromised, the key might be accessed.</li>
+            </ul>
+            <p><strong>Before Proceeding:</strong></p>
+            <ul>
+                <li>Ensure you are on the correct and legitimate NostrMapper website.</li>
+                <li>Consider if using a NIP-07 compatible extension is a better option for you.</li>
+                <li>You are solely responsible for the security of your private key.</li>
+            </ul>
+            <label>
+                <input type="checkbox" id="import-ack-risks"> <strong>I understand and accept these EXTREME risks.</strong>
+            </label>
+        </div>
+
+        <div>
+            <label for="import-private-key">Paste your Nostr Private Key (nsec format):</label>
+            <textarea id="import-private-key" rows="3" style="width: 98%; padding: 8px; margin-bottom: 10px; font-family: monospace;"></textarea>
+        </div>
+
+        <div>
+            <label for="import-passphrase">Enter a strong passphrase (to encrypt this key in the browser):</label>
+            <input type="password" id="import-passphrase" style="width: 98%; padding: 8px; margin-bottom: 10px;">
+        </div>
+
+        <button id="import-key-submit-button">Import & Store Key</button>
+        <button id="cancel-import-key-button">Cancel</button>
+    </section>
+
+        <section id="map-section" class="hidden">
+            <h2>Map & Reports</h2>
+            <div id="map-container" style="height: 400px; background-color: #eee;">
+                <!-- Map will be initialized here -->
+                Map will appear here.
+            </div>
+            <div id="reports-list-container">
+                <!-- Reports list will go here -->
+            </div>
+        </section>
+
+        <section id="create-report-section" class="hidden">
+            <h2>Create New Report</h2>
+    <form id="create-report-form">
+        <div>
+            <label for="report-title">Title:</label>
+            <input type="text" id="report-title" name="report-title" required>
+        </div>
+
+        <div>
+            <label for="report-summary">Summary:</label>
+            <textarea id="report-summary" name="report-summary" rows="3" required></textarea>
+        </div>
+
+        <div>
+            <label for="report-description">Full Description (Markdown supported):</label>
+            <textarea id="report-description" name="report-description" rows="6"></textarea>
+        </div>
+
+        <fieldset style="margin-top: 1em; margin-bottom: 1em; padding: 1em; border: 1px solid #ddd;">
+            <legend>Location</legend>
+            <div>
+                <button type="button" id="pick-location-button">Pick Location from Map</button>
+                <p style="font-size:0.9em; color: #555;">(This will take you to the map. Click on the map to select coordinates.)</p>
+            </div>
+            <div>
+                <label for="report-latitude">Latitude:</label>
+                <input type="text" id="report-latitude" name="report-latitude" readonly placeholder="e.g., 40.7128">
+            </div>
+            <div>
+                <label for="report-longitude">Longitude:</label>
+                <input type="text" id="report-longitude" name="report-longitude" readonly placeholder="e.g., -74.0060">
+            </div>
+            <!-- We might add geohash display here later -->
+        </fieldset>
+
+        <!-- More fields like Category/Tags, Photos will be added later as per spec -->
+
+        <button type="submit" id="queue-report-button">Queue Report for Sending</button>
+    </form>
+        </section>
+
+        <section id="settings-section" class="hidden">
+            <h2>Settings</h2>
+            <!-- Settings UI will go here -->
+        </section>
+    </main>
+
+    <footer>
+        <p>NostrMapper - Decentralized Social Mapping</p>
+    </footer>
+
+    <script>
+        // === IndexedDB Helpers (Simplified) ===
+        const DB_NAME = 'NostrMapperDB';
+        const STORE_PROFILE = 'userProfile';
+        const STORE_REPORTS_QUEUE = 'reportsQueue'; // Defined globally
+        let db;
+        let map; // Leaflet map instance
+
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                if (db) return resolve(db);
+                const request = indexedDB.open(DB_NAME, 1); // Version 1 initially
+                request.onerror = (event) => reject('Error opening DB: ' + event.target.errorCode);
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+                request.onupgradeneeded = (event) => {
+                    const dbInstance = event.target.result; // Use a different variable name
+                    // User Profile Store
+                    if (!dbInstance.objectStoreNames.contains(STORE_PROFILE)) {
+                        const profileStore = dbInstance.createObjectStore(STORE_PROFILE, { keyPath: 'id' });
+                        profileStore.createIndex('pubkey_idx', 'pubkey', { unique: true });
+                    }
+
+                    // Reports Queue Store
+                    if (!dbInstance.objectStoreNames.contains(STORE_REPORTS_QUEUE)) {
+                        const reportsStore = dbInstance.createObjectStore(STORE_REPORTS_QUEUE, { autoIncrement: true }); // Use autoIncrement for primary key
+                        reportsStore.createIndex('timestamp_idx', 'timestamp', { unique: false });
+                        // Add other indexes as needed later, e.g., for status (queued, publishing, failed)
+                    }
+                    console.log('IndexedDB setup/upgrade complete for all stores.');
+                };
+            });
+        }
+
+        async function saveProfileToDB(profileData) { // { id: 'localUser', pubkey: '...', encryptedPrivateKey: '...' }
+            const currentDB = await initDB();
+            return new Promise((resolve, reject) => {
+                const transaction = currentDB.transaction([STORE_PROFILE], 'readwrite');
+                const store = transaction.objectStore(STORE_PROFILE);
+                const request = store.put(profileData);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject('Error saving profile: ' + event.target.errorCode);
+            });
+        }
+
+        async function getProfileFromDB(id = 'localUser') {
+            const currentDB = await initDB();
+            return new Promise((resolve, reject) => {
+                const transaction = currentDB.transaction([STORE_PROFILE], 'readonly');
+                const store = transaction.objectStore(STORE_PROFILE);
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (event) => reject('Error fetching profile: ' + event.target.errorCode);
+            });
+        }
+
+async function deleteProfileFromDB(id = 'localUser') {
+    const currentDB = await initDB();
+    return new Promise((resolve, reject) => {
+        const transaction = currentDB.transaction([STORE_PROFILE], 'readwrite');
+        const store = transaction.objectStore(STORE_PROFILE);
+        const request = store.delete(id);
+        request.onsuccess = () => resolve(true); // Successfully deleted or not found
+        request.onerror = (event) => reject('Error deleting profile: ' + event.target.errorCode);
+    });
+}
+
+async function saveReportToQueueDB(reportData) { // { title: '...', summary: '...', description: '...', latitude: '...', longitude: '...', timestamp: Date.now(), status: 'queued' }
+    const currentDB = await initDB();
+    return new Promise((resolve, reject) => {
+        const transaction = currentDB.transaction([STORE_REPORTS_QUEUE], 'readwrite');
+        const store = transaction.objectStore(STORE_REPORTS_QUEUE);
+        // Add a timestamp and initial status
+        const fullReportData = { ...reportData, timestamp: Date.now(), status: 'queued' };
+        const request = store.add(fullReportData); // Use add for auto-increment key
+        request.onsuccess = () => resolve(request.result); // Returns the key of the new record
+        request.onerror = (event) => reject('Error saving report to queue: ' + event.target.errorCode);
+    });
+}
+
+        // === Web Crypto API Helpers (AES-GCM Encryption/Decryption) ===
+        async function encryptData(data, password) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(password),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            const key = await crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                true,
+                ['encrypt', 'decrypt']
+            );
+            const encodedData = new TextEncoder().encode(data);
+            const encryptedContent = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                encodedData
+            );
+            const encryptedArr = new Uint8Array(encryptedContent);
+            // Return as base64 strings for easier storage
+            return {
+                salt: btoa(String.fromCharCode.apply(null, salt)),
+                iv: btoa(String.fromCharCode.apply(null, iv)),
+                encryptedData: btoa(String.fromCharCode.apply(null, encryptedArr))
+            };
+        }
+
+        // Decrypt function will be added/used later when needed for signing
+async function decryptData(encryptedObj, password) {
+    try {
+        const salt = Uint8Array.from(atob(encryptedObj.salt), c => c.charCodeAt(0));
+        const iv = Uint8Array.from(atob(encryptedObj.iv), c => c.charCodeAt(0));
+        const encryptedData = Uint8Array.from(atob(encryptedObj.encryptedData), c => c.charCodeAt(0));
+
+        const keyMaterial = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(password),
+            { name: 'PBKDF2' },
+            false,
+            ['deriveKey']
+        );
+        const key = await crypto.subtle.deriveKey(
+            { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
+            keyMaterial,
+            { name: 'AES-GCM', length: 256 },
+            true,
+            ['encrypt', 'decrypt']
+        );
+        const decryptedContent = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            encryptedData
+        );
+        return new TextDecoder().decode(decryptedContent);
+    } catch (error) {
+        console.error("Decryption failed:", error);
+        // It's common for decryption to fail if the password is wrong.
+        // Avoid leaking specific crypto errors to the user directly in production if not needed.
+        throw new Error("Decryption failed. Incorrect passphrase or corrupted data.");
+    }
+}
+
+        // Initialize DB on script load
+        initDB().then(() => console.log('DB initialized')).catch(err => console.error(err));
+
+function initializeMap() {
+    const mapContainer = document.getElementById('map-container');
+    if (!mapContainer) {
+        console.error('Map container element not found.');
+        return;
+    }
+
+    // Check if Leaflet is loaded
+    if (typeof L === 'undefined') {
+        console.error('Leaflet library (L) not found. Map cannot be initialized.');
+        mapContainer.innerHTML = '<p style="color: red;">Error: Map library failed to load. Please check your internet connection and try again.</p>';
+        return;
+    }
+
+    // If map is already initialized and the container is visible
+    if (map && mapContainer.offsetParent !== null) {
+        map.invalidateSize();
+        return;
+    }
+    // If map is initialized but container was hidden, don't re-initialize, just invalidate below
+    if (map) {
+         setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+         return;
+    }
+
+    mapContainer.innerHTML = ''; // Clear placeholder/error
+
+    map = L.map('map-container').setView([20, 0], 2);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18,
+    }).addTo(map);
+
+    console.log('Map initialized.');
+
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 100);
+}
+
+        // Basic navigation logic
+        const sections = {
+            identity: document.getElementById('identity-section'),
+            map: document.getElementById('map-section'),
+            createReport: document.getElementById('create-report-section'),
+            settings: document.getElementById('settings-section')
+        };
+
+        const navButtons = {
+            identity: document.getElementById('nav-identity'),
+            map: document.getElementById('nav-map'),
+            createReport: document.getElementById('nav-create-report'),
+            settings: document.getElementById('nav-settings')
+        };
+
+        const createProfileButton = document.getElementById('create-profile-button');
+        const createProfileFormSection = document.getElementById('create-profile-form-section');
+        const cancelCreateProfileButton = document.getElementById('cancel-create-profile-button');
+
+        const importKeyButton = document.getElementById('import-key-button');
+        const importKeyFormSection = document.getElementById('import-key-form-section');
+        const cancelImportKeyButton = document.getElementById('cancel-import-key-button');
+
+        // Create Profile Elements
+        const generateKeysButton = document.getElementById('generate-keys-button');
+        const createAckRisksCheckbox = document.getElementById('create-ack-risks');
+        const createPassphraseInput = document.getElementById('create-passphrase');
+        const generatedPublicKeyText = document.getElementById('generated-public-key');
+        const generatedPrivateKeyTextarea = document.getElementById('generated-private-key');
+        const generatedKeyInfoDiv = document.getElementById('generated-key-info');
+        const copyPrivateKeyButton = document.getElementById('copy-private-key-button');
+        // Profile info area in the main identity section
+        const profileInfoArea = document.getElementById('profile-info-area');
+
+        // Report Form Elements
+        const createReportForm = document.getElementById('create-report-form');
+        const reportTitleInput = document.getElementById('report-title');
+        const reportSummaryInput = document.getElementById('report-summary');
+        const reportDescriptionInput = document.getElementById('report-description');
+        const reportLatitudeInput = document.getElementById('report-latitude');
+        const reportLongitudeInput = document.getElementById('report-longitude');
+
+        function showSection(sectionId) {
+            Object.values(sections).forEach(section => section.classList.add('hidden'));
+            if (sections[sectionId]) {
+                sections[sectionId].classList.remove('hidden');
+            }
+            // Also hide specific forms if they are not part of the main navigation
+            if (createProfileFormSection) createProfileFormSection.classList.add('hidden');
+            if (importKeyFormSection) importKeyFormSection.classList.add('hidden');
+        }
+
+        navButtons.identity.addEventListener('click', () => {
+            showSection('identity');
+            if (createProfileFormSection) createProfileFormSection.classList.add('hidden');
+            if (importKeyFormSection) importKeyFormSection.classList.add('hidden');
+        });
+        navButtons.map.addEventListener('click', () => {
+            showSection('map');
+            initializeMap(); // Call it directly, initializeMap will handle if L is not ready or if map already exists
+        });
+        navButtons.createReport.addEventListener('click', () => showSection('createReport'));
+        navButtons.settings.addEventListener('click', () => showSection('settings'));
+
+        createProfileButton.addEventListener('click', () => {
+            createProfileFormSection.classList.remove('hidden');
+            sections.identity.classList.add('hidden');
+        });
+        cancelCreateProfileButton.addEventListener('click', () => {
+            createProfileFormSection.classList.add('hidden');
+            sections.identity.classList.remove('hidden');
+            if(generatedKeyInfoDiv) generatedKeyInfoDiv.classList.add('hidden');
+        });
+
+        importKeyButton.addEventListener('click', () => {
+            importKeyFormSection.classList.remove('hidden');
+            sections.identity.classList.add('hidden');
+        });
+        cancelImportKeyButton.addEventListener('click', () => {
+            importKeyFormSection.classList.add('hidden');
+            sections.identity.classList.remove('hidden');
+        });
+
+        if (generateKeysButton) {
+            generateKeysButton.addEventListener('click', async () => {
+                if (!createAckRisksCheckbox.checked) {
+                    alert('You must acknowledge the risks before generating keys.');
+                    return;
+                }
+                const passphrase = createPassphraseInput.value;
+                if (passphrase.length < 8) { // Basic validation
+                    alert('Passphrase must be at least 8 characters long.');
+                    return;
+                }
+
+                try {
+                    const privateKeyHex = nostrTools.generatePrivateKey();
+                    const publicKeyHex = nostrTools.getPublicKey(privateKeyHex);
+
+                    // Display keys to user (nsec for backup)
+                    const nsec = nostrTools.nip19.nsecEncode(privateKeyHex);
+                    const npub = nostrTools.nip19.npubEncode(publicKeyHex);
+                    generatedPublicKeyText.textContent = npub;
+                    generatedPrivateKeyTextarea.value = nsec; // Show nsec for backup
+                    generatedKeyInfoDiv.classList.remove('hidden');
+
+                    // Encrypt the HEX private key
+                    const encryptedKeyData = await encryptData(privateKeyHex, passphrase);
+
+                    const profile = {
+                        id: 'localUser', // Singleton for now
+                        pubkey: publicKeyHex, // Store hex pubkey
+                        encryptedSalt: encryptedKeyData.salt,
+                        encryptedIv: encryptedKeyData.iv,
+                        encryptedPrivateKey: encryptedKeyData.encryptedData,
+                        profileType: 'local'
+                    };
+
+                    await saveProfileToDB(profile);
+                    alert('Profile created and saved locally (encrypted)! IMPORTANT: Copy your private key (nsec) shown and back it up securely. It will not be shown again.');
+
+                    // Update profile display area
+                    // profileInfoArea.innerHTML = `Current Profile (Local): ${npub} <button id="logout-button">Logout</button>`;
+                    await loadAndDisplayProfile(); // Refresh display and attach listener
+
+                    createPassphraseInput.value = ''; // Clear passphrase field
+                    // Optionally hide the form or redirect to main identity view after a delay
+                    // createProfileFormSection.classList.add('hidden');
+                    // sections.identity.classList.remove('hidden');
+
+                } catch (error) {
+                    console.error('Error generating/saving keys:', error);
+                    alert('Failed to generate or save keys: ' + error.message);
+                }
+            });
+        }
+
+        if (copyPrivateKeyButton) {
+            copyPrivateKeyButton.addEventListener('click', () => {
+                generatedPrivateKeyTextarea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('Private key copied to clipboard! Store it safely.');
+                } catch (err) {
+                    alert('Failed to copy private key. Please copy it manually.');
+                    console.error('Copy failed', err);
+                }
+                // Clear selection
+                if (window.getSelection) {
+                    window.getSelection().removeAllRanges();
+                } else if (document.selection) {
+                    document.selection.empty();
+                }
+            });
+        }
+
+const importKeySubmitButton = document.getElementById('import-key-submit-button');
+const importAckRisksCheckbox = document.getElementById('import-ack-risks');
+const importPrivateKeyTextarea = document.getElementById('import-private-key');
+const importPassphraseInput = document.getElementById('import-passphrase');
+// const profileInfoArea = document.getElementById('profile-info-area'); // Should already be defined
+
+if (importKeySubmitButton) {
+    importKeySubmitButton.addEventListener('click', async () => {
+        if (!importAckRisksCheckbox.checked) {
+            alert('You must acknowledge the EXTREME risks before importing a private key.');
+            return;
+        }
+
+        const privateKeyInput = importPrivateKeyTextarea.value.trim();
+        const passphrase = importPassphraseInput.value;
+
+        if (!privateKeyInput) {
+            alert('Please paste your private key (nsec format).');
+            return;
+        }
+        if (passphrase.length < 8) { // Basic validation
+            alert('Passphrase must be at least 8 characters long.');
+            return;
+        }
+
+        try {
+            let privateKeyHex;
+            // Validate and decode nsec
+            if (privateKeyInput.startsWith('nsec')) {
+                const decoded = nostrTools.nip19.decode(privateKeyInput);
+                if (decoded.type === 'nsec') {
+                    privateKeyHex = decoded.data;
+                } else {
+                    alert('Invalid nsec private key format.');
+                    return;
+                }
+            } else if (privateKeyInput.length === 64 && /^[a-f0-9]+$/.test(privateKeyInput)) {
+                // Allow hex for advanced users, though UI asks for nsec
+                privateKeyHex = privateKeyInput;
+                console.warn('Imported private key as hex. Nsec is preferred.');
+            } else {
+                 alert('Invalid private key format. Please use nsec format.');
+                 return;
+            }
+
+            const publicKeyHex = nostrTools.getPublicKey(privateKeyHex);
+            const npub = nostrTools.nip19.npubEncode(publicKeyHex);
+
+            // Encrypt the HEX private key
+            const encryptedKeyData = await encryptData(privateKeyHex, passphrase);
+
+            const profile = {
+                id: 'localUser', // Singleton for now, overwrites existing local profile
+                pubkey: publicKeyHex,
+                encryptedSalt: encryptedKeyData.salt,
+                encryptedIv: encryptedKeyData.iv,
+                encryptedPrivateKey: encryptedKeyData.encryptedData,
+                profileType: 'localImport' // Differentiate if needed
+            };
+
+            await saveProfileToDB(profile);
+            alert('Private key imported, encrypted, and saved locally! Your public key (npub) is: ' + npub);
+
+            // Update profile display area
+                    // profileInfoArea.innerHTML = `Current Profile (Local - Imported): ${npub} <button id="logout-button">Logout</button>`;
+                    await loadAndDisplayProfile(); // Refresh display and attach listener
+
+            importPrivateKeyTextarea.value = '';
+            importPassphraseInput.value = '';
+            importAckRisksCheckbox.checked = false;
+
+            // Hide the import form and show the main identity section
+            if (importKeyFormSection) importKeyFormSection.classList.add('hidden');
+            if (sections.identity) sections.identity.classList.remove('hidden');
+
+        } catch (error) {
+            console.error('Error importing/saving key:', error);
+            alert('Failed to import or save key: ' + error.message + '\nEnsure the private key is correct (nsec format) and try again.');
+        }
+    });
+}
+
+async function handleLogout() {
+    const confirmLogout = confirm("Are you sure you want to log out? This will remove your encrypted private key from this browser. Make sure you have backed up your private key (nsec)!");
+    if (confirmLogout) {
+        try {
+            await deleteProfileFromDB('localUser');
+            profileInfoArea.textContent = 'Current Profile: Not logged in.';
+            alert('You have been logged out. Your local key data has been cleared.');
+
+            // Ensure identity forms are hidden and main identity choice is shown
+            if (createProfileFormSection) createProfileFormSection.classList.add('hidden');
+            if (importKeyFormSection) importKeyFormSection.classList.add('hidden');
+            if (sections.identity && !sections.identity.classList.contains('hidden')) {
+                // Already on identity section, do nothing further for section display
+            } else if (sections.identity) { // If on another section, switch to identity
+                 showSection('identity');
+            }
+
+        } catch (error) {
+            console.error('Error during logout:', error);
+            alert('Failed to logout completely: ' + error.message);
+        }
+    }
+}
+
+async function getDecryptedPrivateKey() {
+    const profile = await getProfileFromDB('localUser');
+    if (!profile || !profile.encryptedPrivateKey) {
+        alert('No local profile found. Please create or import a profile first.');
+        throw new Error('No local profile with encrypted key found.');
+    }
+
+    const passphrase = prompt('Enter your passphrase to decrypt the private key for signing:');
+    if (!passphrase) {
+        alert('Passphrase not provided.');
+        throw new Error('Passphrase not provided.');
+    }
+
+    try {
+        // The encryptedPrivateKey, salt, and iv are stored directly on the profile object from previous steps
+        const encryptedDetails = {
+            salt: profile.encryptedSalt,
+            iv: profile.encryptedIv,
+            encryptedData: profile.encryptedPrivateKey
+        };
+        const decryptedHexKey = await decryptData(encryptedDetails, passphrase);
+
+        // For this placeholder step, we'll just log it and show an alert.
+        // In a real scenario, this function would return decryptedHexKey.
+        console.log('Decrypted private key (hex):', decryptedHexKey); // For testing ONLY
+        alert('Private key decrypted successfully (see console for hex key - for testing). You would now be able to sign events.');
+
+        // To verify, let's get the public key from the decrypted private key
+        const publicKeyFromDecrypted = nostrTools.getPublicKey(decryptedHexKey);
+        if (publicKeyFromDecrypted === profile.pubkey) {
+            console.log("Verification successful: Derived public key matches stored public key.");
+        } else {
+            console.error("Verification FAILED: Derived public key does NOT match stored public key. This is a critical error.");
+            alert("CRITICAL ERROR: Public key verification failed after decryption. Check console.");
+        }
+
+        return decryptedHexKey; // Return for potential future use in actual signing
+    } catch (error) {
+        console.error('Failed to get decrypted private key:', error);
+        alert('Failed to decrypt private key: ' + error.message);
+        throw error; // Re-throw the error
+    }
+}
+
+        // Function to update profile display on load (will be expanded in step 9)
+        async function loadAndDisplayProfile() {
+            const signingTestArea = document.getElementById('signing-test-area');
+            try {
+                const profile = await getProfileFromDB('localUser');
+                if (profile && profile.pubkey) {
+                    const npub = nostrTools.nip19.npubEncode(profile.pubkey);
+                    let profileTypeDisplay = (profile.profileType === 'localImport') ? "(Local - Imported)" : "(Local)";
+                    profileInfoArea.innerHTML = `Current Profile ${profileTypeDisplay}: ${npub} <button id="logout-button" style="margin-left: 10px; padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Logout</button>`;
+
+                    const logoutButton = document.getElementById('logout-button');
+                    if (logoutButton) {
+                        logoutButton.addEventListener('click', handleLogout);
+                    }
+                    if (signingTestArea) signingTestArea.classList.remove('hidden');
+                } else {
+                    profileInfoArea.textContent = 'Current Profile: Not logged in.';
+                    if (signingTestArea) signingTestArea.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error("Error loading profile:", error);
+                profileInfoArea.textContent = 'Current Profile: Error loading.';
+                if (signingTestArea) signingTestArea.classList.add('hidden');
+            }
+        }
+        // Call on script load after DB init
+        initDB().then(loadAndDisplayProfile).catch(console.error);
+
+        const testDecryptButton = document.getElementById('test-decrypt-button');
+        if (testDecryptButton) {
+            testDecryptButton.addEventListener('click', async () => {
+                try {
+                    // Attempt to get the decrypted key. It will show alerts/logs.
+                    await getDecryptedPrivateKey();
+                } catch (err) {
+                    // Error already handled and alerted in getDecryptedPrivateKey
+                    console.log("Test decryption process finished with an error or was cancelled.");
+                }
+            });
+        }
+        // Show identity section by default
+        showSection('identity');
+
+if (createReportForm) {
+    createReportForm.addEventListener('submit', async (event) => {
+        event.preventDefault(); // Prevent default form submission
+
+        const title = reportTitleInput.value;
+        const summary = reportSummaryInput.value;
+        const description = reportDescriptionInput.value;
+        const latitude = reportLatitudeInput.value;
+        const longitude = reportLongitudeInput.value;
+
+        if (!title || !summary) {
+            alert('Title and Summary are required to queue a report.');
+            return;
+        }
+        // Basic validation for coordinates could be added here if they are mandatory at this stage
+        if (!latitude || !longitude) {
+            // For now, let's make them optional for queuing, but they'll be needed for actual Nostr events
+            console.warn("Latitude or Longitude is missing. The report will be queued, but location data is needed for full functionality.");
+        }
+
+        const reportData = {
+            title,
+            summary,
+            description,
+            latitude,
+            longitude
+            // Other fields like geohash, category, tags will be added later
+        };
+
+        try {
+            const reportKey = await saveReportToQueueDB(reportData);
+            alert(`Report "${title}" (ID: ${reportKey}) has been queued for sending!`);
+            // Clear the form
+            createReportForm.reset();
+            // Optionally, navigate away or give other feedback
+        } catch (error) {
+            console.error('Failed to queue report:', error);
+            alert('Error queuing report: ' + error.message);
+        }
+    });
+}
+
+const swScriptContent = `
+const CACHE_NAME = 'nostrmapper-cache-v1';
+const APP_SHELL_URL = 'nostrmapper.html'; // The main HTML file itself
+
+// List of CDN assets to cache
+// Ensure these URLs exactly match those in your <head>
+const CDN_ASSETS = [
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+    'https://unpkg.com/nostr-tools@1/lib/nostr.bundle.js'
+];
+
+// On install, cache the app shell and CDN assets
+self.addEventListener('install', event => {
+    console.log('[SW] Install event');
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => {
+            console.log('[SW] Caching app shell and CDN assets');
+            // Cache the main HTML file.
+            // IMPORTANT: If 'nostrmapper.html' is the page registering the SW,
+            // it might already be in cache or this fetch might be for a fresh copy.
+            // For a single-file app, caching it by its actual URL (which is the current page)
+            // is crucial. If the app is served from '/', use '/'.
+            // For a file named 'nostrmapper.html', use 'nostrmapper.html'.
+            const appShellRequest = new Request(APP_SHELL_URL, { mode: 'same-origin' });
+            cache.add(appShellRequest);
+
+            return cache.addAll(CDN_ASSETS);
+        }).catch(error => {
+            console.error('[SW] Caching failed during install:', error);
+        })
+    );
+});
+
+// On activate, clean up old caches
+self.addEventListener('activate', event => {
+    console.log('[SW] Activate event');
+    event.waitUntil(
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (cacheName !== CACHE_NAME) {
+                        console.log('[SW] Deleting old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        })
+    );
+    return self.clients.claim(); // Ensure new SW takes control immediately
+});
+
+// On fetch, serve from cache first, then network (Cache First strategy for app shell and CDN assets)
+self.addEventListener('fetch', event => {
+    // Let the browser handle requests for scripts from extensions, etc.
+    if (!event.request.url.startsWith('http')) {
+        return;
+    }
+
+    // For the main HTML file and CDN assets, use Cache First strategy
+    if (event.request.url.endsWith(APP_SHELL_URL) || CDN_ASSETS.includes(event.request.url)) {
+        event.respondWith(
+            caches.match(event.request).then(cachedResponse => {
+                if (cachedResponse) {
+                    // console.log('[SW] Serving from cache:', event.request.url);
+                    return cachedResponse;
+                }
+                // console.log('[SW] Fetching from network:', event.request.url);
+                return fetch(event.request).then(networkResponse => {
+                    // Optionally, cache the fetched resource if it's one we care about
+                    // For CDN assets, this is good. For app shell, it was cached on install.
+                    if (CDN_ASSETS.includes(event.request.url) && networkResponse && networkResponse.status === 200) {
+                        const responseToCache = networkResponse.clone();
+                        caches.open(CACHE_NAME).then(cache => {
+                            cache.put(event.request, responseToCache);
+                        });
+                    }
+                    return networkResponse;
+                }).catch(error => {
+                    console.error('[SW] Network fetch failed for:', event.request.url, error);
+                    // Optionally return a custom offline page here if appropriate
+                });
+            })
+        );
+    } else {
+        // For other requests (e.g., map tiles, Nostr relay connections),
+        // use a Network First or other appropriate strategy.
+        // For now, let's default to network only for simplicity for non-explicitly cached items.
+        // console.log('[SW] Defaulting to network for:', event.request.url);
+        event.respondWith(fetch(event.request).catch(error => {
+             console.warn('[SW] Fetch failed for non-cached asset:', event.request.url, error);
+             // No specific offline fallback for these yet.
+        }));
+    }
+});
+`;
+
+// --- Service Worker Registration ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        // Create a Blob from the SW script string
+        const swBlob = new Blob([swScriptContent], { type: 'application/javascript' });
+        // Create an object URL for the Blob
+        const swUrl = URL.createObjectURL(swBlob);
+
+        navigator.serviceWorker.register(swUrl)
+            .then(registration => {
+                console.log('Service Worker registered successfully with scope:', registration.scope);
+                // We might want to revoke the object URL after registration if it's no longer needed,
+                // but usually, it's fine to leave it as the browser handles it.
+                // URL.revokeObjectURL(swUrl); // Optional: clean up blob URL if not needed further
+            })
+            .catch(error => {
+                console.error('Service Worker registration failed:', error);
+            });
+    });
+} else {
+    console.warn('Service Worker not supported in this browser.');
+}
+    </script>
+</body>
+</html>
