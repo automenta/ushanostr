@@ -220,22 +220,124 @@ initDB().then(() => {
     console.error('dbService.js: DB initialization on load failed:', error);
 });
 
+// Existing functions like initDB, saveViewedReport, getEventById etc. remain.
+// STORE_VIEWED_REPORTS, created_at_idx, pubkey_idx are assumed to exist.
 
-export async function getAllViewedReports() {
-    console.log("Getting all reports from viewedReports store...");
+export async function getAllViewedReports(filters = {}) {
+    console.log("dbService: Getting viewed reports with filters:", JSON.parse(JSON.stringify(filters))); // Deep copy for logging
+    const currentDB = await initDB();
+    return new Promise((resolve, reject) => {
+        const transaction = currentDB.transaction([STORE_VIEWED_REPORTS], 'readonly');
+        const store = transaction.objectStore(STORE_VIEWED_REPORTS);
+        const results = [];
+
+        // Prepare filter values
+        const filterTags = (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) ?
+                           filters.tags.map(tag => tag.toLowerCase()) : null;
+
+        let authorPubkeyHex = null;
+        if (filters.author) {
+            try {
+                if (filters.author.startsWith("npub1")) {
+                    const decoded = nostrTools.nip19.decode(filters.author); // nostrTools is global
+                    if (decoded.type === 'npub') {
+                        authorPubkeyHex = decoded.data;
+                    }
+                } else if (filters.author.length === 64 && /^[a-f0-9]+$/.test(filters.author)) {
+                    authorPubkeyHex = filters.author; // Assume it's already hex
+                }
+                if (!authorPubkeyHex) console.warn("Could not decode author npub or invalid hex for filtering:", filters.author);
+            } catch (e) {
+                console.warn("Error decoding author npub for filtering:", filters.author, e);
+            }
+        }
+
+        const timeStart = filters.timeStart ? new Date(filters.timeStart).getTime() / 1000 : null; // Convert to UNIX timestamp (seconds)
+        const timeEnd = filters.timeEnd ? new Date(filters.timeEnd).getTime() / 1000 : null;
+
+        // Open a cursor to iterate through all records
+        const request = store.openCursor();
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+                const report = cursor.value;
+                let matches = true;
+
+                // Apply time filter (uses created_at in seconds)
+                if (timeStart && report.created_at < timeStart) {
+                    matches = false;
+                }
+                if (matches && timeEnd && report.created_at > timeEnd) {
+                    matches = false;
+                }
+
+                // Apply author filter (hex pubkey)
+                if (matches && authorPubkeyHex && report.pubkey !== authorPubkeyHex) {
+                    matches = false;
+                }
+
+                // Apply tags filter (checks if event.tags contains ANY of the filterTags)
+                // This is a basic "contains any" check on the second element of each tag array.
+                if (matches && filterTags) {
+                    let tagMatch = false;
+                    if (report.tags && Array.isArray(report.tags)) {
+                        for (const eventTagArray of report.tags) {
+                            if (eventTagArray.length > 1 && typeof eventTagArray[1] === 'string' && filterTags.includes(eventTagArray[1].toLowerCase())) {
+                                tagMatch = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!tagMatch) {
+                        matches = false;
+                    }
+                }
+
+                // Map bounds filter is NOT applied here; it will be done client-side in main.js
+                // as it requires Leaflet's map.getBounds().contains() which dbService doesn't know about.
+
+                if (matches) {
+                    results.push(report);
+                }
+                cursor.continue();
+            } else {
+                // End of cursor
+                console.log(`dbService: Found ${results.length} reports after DB-level filtering.`);
+                resolve(results);
+            }
+        };
+        request.onerror = (event) => {
+            console.error('dbService: Error fetching reports with cursor:', event.target.errorCode);
+            reject('Error fetching reports: ' + event.target.errorCode);
+        };
+    });
+}
+
+
+export async function getEventById(eventId) {
+    console.log(`Getting event by ID from viewedReports: ${eventId}`);
+    if (!eventId) {
+        console.warn("getEventById: eventId is required.");
+        return Promise.reject("Event ID is required.");
+    }
     const currentDB = await initDB(); // initDB is already defined
     return new Promise((resolve, reject) => {
         const transaction = currentDB.transaction([STORE_VIEWED_REPORTS], 'readonly'); // STORE_VIEWED_REPORTS is defined
         const store = transaction.objectStore(STORE_VIEWED_REPORTS);
-        const request = store.getAll(); // Gets all records from the object store
+        const request = store.get(eventId); // Get by keyPath 'id'
 
         request.onsuccess = () => {
-            console.log(`Found ${request.result.length} viewed reports.`);
-            resolve(request.result); // Returns an array of event objects
+            if (request.result) {
+                console.log(`Event ${eventId} retrieved successfully from viewedReports.`);
+                resolve(request.result); // Returns the event object
+            } else {
+                console.warn(`Event ${eventId} not found in viewedReports.`);
+                resolve(null); // Resolve with null if not found
+            }
         };
         request.onerror = (event) => {
-            console.error('Error fetching all viewed reports:', event.target.errorCode);
-            reject('Error fetching all viewed reports: ' + event.target.errorCode);
+            console.error(`Error fetching event ${eventId} from viewedReports:`, event.target.errorCode);
+            reject(`Error fetching event ${eventId}: ` + event.target.errorCode);
         };
     });
 }

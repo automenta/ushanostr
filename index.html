@@ -6,6 +6,16 @@
     <meta name="theme-color" content="#333333">
     <title>NostrMapper (New Structure)</title>
     <link rel="manifest" href="manifest.json">
+
+    <!-- Leaflet CSS (added for markercluster dependency) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet.markercluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <!-- leaflet-control-geocoder CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
+
+    <link rel="stylesheet" href="/src/styles/main.css">
 </head>
 <body>
         <header>
@@ -129,6 +139,35 @@
             <h2>Map & Reports</h2>
 
     <button id="center-map-geolocation-button" type="button" style="margin-bottom: 10px;">Center on My Location</button>
+
+    <div id="filter-controls-area" style="padding: 10px; border: 1px solid #ddd; margin-bottom: 10px; border-radius: 5px;">
+        <h4>Filter Reports</h4>
+        <div class="filter-group">
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="filter-by-map-bounds-toggle"> Filter by current map view
+            </label>
+        </div>
+        <div class="filter-group">
+            <label for="filter-by-tags-input">Tags/Categories (comma-separated):</label>
+            <input type="text" id="filter-by-tags-input" placeholder="e.g., food, #alert" style="margin-right: 5px;">
+            <button id="apply-tags-filter-button" type="button">Apply Tags</button>
+        </div>
+        <div class="filter-group">
+            <label for="filter-time-start">Date Range From:</label>
+            <input type="datetime-local" id="filter-time-start" style="margin-right: 5px;">
+            <label for="filter-time-end">To:</label>
+            <input type="datetime-local" id="filter-time-end" style="margin-right: 5px;">
+            <button id="apply-time-filter-button" type="button">Apply Time</button>
+        </div>
+        <div class="filter-group">
+            <label for="filter-by-author-input">Author Public Key (npub or hex):</label>
+            <input type="text" id="filter-by-author-input" placeholder="npub1... or hex pubkey" style="margin-right: 5px;">
+            <button id="apply-author-filter-button" type="button">Apply Author</button>
+        </div>
+        <div style="margin-top: 15px;">
+            <button id="clear-all-filters-button" type="button" style="background-color: #6c757d; color:white;">Clear All Filters</button>
+        </div>
+    </div>
             <div id="map-container" style="height: 400px; background-color: #eee;">
                 Map will appear here.
             </div>
@@ -158,6 +197,12 @@
                         <button type="button" id="pick-location-button">Pick Location from Map</button>
                         <p style="font-size:0.9em; color: #555;">(This will take you to the map. Click on the map to select coordinates.)</p>
                     </div>
+
+            <div style="margin-top:10px; margin-bottom:10px; padding-top:10px; border-top: 1px dashed #ccc;">
+                <label for="report-manual-address">Or Enter Full Address:</label>
+                <input type="text" id="report-manual-address" name="report-manual-address" placeholder="e.g., 1600 Amphitheatre Pkwy, Mountain View, CA" style="width: calc(100% - 150px); margin-right: 5px;">
+                <button type="button" id="geocode-address-button" style="padding: 8px 12px;">Find Address</button>
+            </div>
                     <div>
                         <label for="report-latitude">Latitude:</label>
                         <input type="text" id="report-latitude" name="report-latitude" readonly placeholder="e.g., 40.7128">
@@ -173,8 +218,13 @@
             </div>
 
             <div>
-                <label for="report-category">Category (e.g., roadblock, aid-station):</label>
-                <input type="text" id="report-category" name="report-category" placeholder="e.g., incident, observation">
+                <label for="report-category-select">Category:</label>
+                <select id="report-category-select" name="report-category-select">
+                    <option value="" disabled selected>-- Select a Category --</option>
+                    <!-- User-defined categories will be populated here by JS -->
+                    <option value="_other_">Other (Specify Below)</option>
+                </select>
+                <input type="text" id="report-category-other-input" name="report-category-other" style="display:none; margin-top:5px; width: calc(100% - 22px);" placeholder="Enter custom category name">
             </div>
 
             <div>
@@ -207,12 +257,44 @@
 
         <section id="settings-section" class="hidden">
             <h2>Settings</h2>
+            <!-- Relay settings from previous phase -->
+            <div id="relay-settings" style="margin-bottom: 20px;">
+                <h3>Relay Configuration</h3>
+                <div>
+                    <input type="text" id="new-relay-url" placeholder="wss://your-relay-url.com" style="width: 300px; padding: 8px;">
+                    <button id="add-relay-button">Add Relay</button>
+                </div>
+                <ul id="relay-list" style="list-style-type: none; padding-left: 0;">
+                    <!-- Relays will be listed here by JS -->
+                </ul>
+            </div>
 
-        <div style="margin-top: 20px;">
-            <h3>Offline Queue Management</h3>
-            <button id="sync-queue-button">Sync Queued Reports</button>
-            <p id="sync-status-message" style="font-size: 0.9em; color: #555;"></p>
-        </div>
+            <!-- Focus Tag setting from previous phase -->
+            <div id="focus-tag-setting" style="margin-bottom: 20px;">
+                <h3>Focus Tag for Subscriptions</h3>
+                <p>Set a primary tag to focus report subscriptions (e.g., #YourCommunityEvent, #NostrMappingTest).</p>
+                <input type="text" id="focus-tag-input" placeholder="#YourFocusTag">
+                <button id="set-focus-tag-button">Set Tag</button>
+                <p>Current focus tag: <strong id="current-focus-tag-display">Not Set</strong></p>
+            </div>
+
+            <hr style="margin: 20px 0;">
+            <h3>Manage Report Categories</h3>
+            <div class="filter-group"> <!-- Reusing filter-group class for consistent spacing -->
+                <label for="new-category-input">New Category Name:</label>
+                <input type="text" id="new-category-input" placeholder="e.g., Road Closure, Community Event">
+                <button id="add-category-button" type="button">Add Category</button>
+            </div>
+            <h4>Your Categories:</h4>
+            <ul id="user-categories-list" style="list-style-type: none; padding-left: 0;">
+                <!-- Category items will be populated here by JS -->
+                <!-- Example: <li>Community Event <button class="remove-category-button" data-category="Community Event">Remove</button></li> -->
+            </ul>
+             <div style="margin-top: 20px;">
+                 <h3>Offline Queue Management</h3>
+                 <button id="sync-queue-button">Sync Queued Reports</button>
+                 <p id="sync-status-message" style="font-size: 0.9em; color: #555;"></p>
+             </div>
         </section>
 
 <section id="report-detail-view-section" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1001;">
@@ -257,6 +339,16 @@
     <footer>
         <p>NostrMapper - Decentralized Social Mapping</p>
     </footer>
+
+    <!-- Leaflet JS (added for markercluster dependency) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet.markercluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <!-- leaflet-control-geocoder JS -->
+    <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+
+    <!-- Nostr Tools (already assumed to be present globally by some services) -->
+    <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
 
     <!-- Main application script -->
     <script type="module" src="/src/main.js"></script>

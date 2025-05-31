@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#333333">
+    <!-- Placeholder for PWA Manifest Link -->
+    <!-- <link rel="manifest" href="manifest.json"> -->
+    <title>NostrMapper</title>
+    <style>
+        /* CSS will go here */
+        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
+        header { background-color: #f0f0f0; padding: 1em; text-align: center; }
+        nav { background-color: #e0e0e0; padding: 0.5em; text-align: center; }
+        nav button { margin: 0 0.5em; }
+        main { flex-grow: 1; padding: 1em; }
+        footer { background-color: #f0f0f0; padding: 1em; text-align: center; font-size: 0.8em; }
+        .hidden { display: none; }
+        section { margin-bottom: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 5px; }
+        h2 { margin-top: 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NostrMapper</h1>
+    </header>
+
+    <nav>
+        <button id="nav-identity">Identity</button>
+        <button id="nav-map">Map & Reports</button>
+        <button id="nav-create-report">Create Report</button>
+        <button id="nav-settings">Settings</button>
+    </nav>
+
+    <main>
+        <section id="identity-section">
+            <h2>Identity Management</h2>
+            <!-- Identity UI will go here in step 2 -->
+        </section>
+
+        <section id="map-section" class="hidden">
+            <h2>Map & Reports</h2>
+            <div id="map-container" style="height: 400px; background-color: #eee;">
+                <!-- Map will be initialized here -->
+                Map will appear here.
+            </div>
+            <div id="reports-list-container">
+                <!-- Reports list will go here -->
+            </div>
+        </section>
+
+        <section id="create-report-section" class="hidden">
+            <h2>Create New Report</h2>
+            <!-- Report creation form will go here -->
+        </section>
+
+        <section id="settings-section" class="hidden">
+            <h2>Settings</h2>
+            <!-- Settings UI will go here -->
+        </section>
+    </main>
+
+    <footer>
+        <p>NostrMapper - Decentralized Social Mapping</p>
+    </footer>
+
+    <script>
+        // JavaScript will go here
+
+        // Basic navigation logic
+        const sections = {
+            identity: document.getElementById('identity-section'),
+            map: document.getElementById('map-section'),
+            createReport: document.getElementById('create-report-section'),
+            settings: document.getElementById('settings-section')
+        };
+
+        const navButtons = {
+            identity: document.getElementById('nav-identity'),
+            map: document.getElementById('nav-map'),
+            createReport: document.getElementById('nav-create-report'),
+            settings: document.getElementById('nav-settings')
+        };
+
+        function showSection(sectionId) {
+            Object.values(sections).forEach(section => section.classList.add('hidden'));
+            if (sections[sectionId]) {
+                sections[sectionId].classList.remove('hidden');
+            }
+        }
+
+        navButtons.identity.addEventListener('click', () => showSection('identity'));
+        navButtons.map.addEventListener('click', () => showSection('map'));
+        navButtons.createReport.addEventListener('click', () => showSection('createReport'));
+        navButtons.settings.addEventListener('click', () => showSection('settings'));
+
+        // Show identity section by default
+        showSection('identity');
+    </script>
+</body>
+</html>
